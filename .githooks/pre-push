@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+set -eu
+
+make test
+make build
+test -s docs/index.html
+grep -qi '<!doctype html' docs/index.html
+make smoke

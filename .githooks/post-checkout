@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+
+printf '%s\n' "post-checkout: run npm install if package-lock.json differs from node_modules."

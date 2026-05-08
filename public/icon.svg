@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="anon-conf-poll">
+  <rect width="128" height="128" rx="24" fill="#0f4c45"/>
+  <circle cx="64" cy="42" r="20" fill="#f5c84b"/>
+  <path d="M28 106c6-22 18-34 36-34s30 12 36 34" fill="#f7f2e9"/>
+  <path d="M35 42h58" stroke="#f7f2e9" stroke-width="8" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,4 @@
+node_modules
+docs/assets
+coverage
+package-lock.json

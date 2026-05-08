@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+
+printf '%s\n' "post-merge: run npm install if package-lock.json changed."

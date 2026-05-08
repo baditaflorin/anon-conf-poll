@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+msg_file="$1"
+first_line="$(sed -n '1p' "$msg_file")"
+
+case "$first_line" in
+  feat:\ *|fix:\ *|docs:\ *|chore:\ *|refactor:\ *|test:\ *|ops:\ *|data:\ *|build:\ *|style:\ *|perf:\ *|ci:\ *)
+    exit 0
+    ;;
+  *)
+    printf '%s\n' "Commit message must use Conventional Commits, e.g. feat: add poll room"
+    exit 1
+    ;;
+esac

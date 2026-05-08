@@ -1,0 +1,8 @@
+title = "anon-conf-poll gitleaks config"
+
+[allowlist]
+description = "Allow documented public URLs"
+regexes = [
+  '''https://github\.com/baditaflorin/anon-conf-poll''',
+  '''https://www\.paypal\.com/paypalme/florinbadita'''
+]
