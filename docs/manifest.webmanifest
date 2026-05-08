@@ -1,0 +1,16 @@
+{
+  "name": "anon-conf-poll",
+  "short_name": "Anon Poll",
+  "description": "Static, anonymous live polling for conferences.",
+  "start_url": "/anon-conf-poll/",
+  "display": "standalone",
+  "background_color": "#f7f2e9",
+  "theme_color": "#0f4c45",
+  "icons": [
+    {
+      "src": "/anon-conf-poll/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

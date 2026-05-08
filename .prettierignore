@@ -1,4 +1,6 @@
 node_modules
 docs/assets
+docs/index.html
+docs/404.html
 coverage
 package-lock.json

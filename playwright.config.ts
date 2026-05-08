@@ -19,7 +19,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: "npx http-server docs -p 4175 -c-1",
+    command: "npx vite preview --host 127.0.0.1 --port 4175 --strictPort",
     url: "http://127.0.0.1:4175/anon-conf-poll/",
     reuseExistingServer: !process.env.CI,
     timeout: 20_000

@@ -13,7 +13,7 @@ The project needs browser cryptography, proof work, and local analytics. WASM is
 Use these WASM-backed libraries:
 
 - `@duckdb/duckdb-wasm` for local SQL and export preparation.
-- `libsodium-wrappers-sumo` for hashing, random bytes, and optional symmetric encryption helpers.
+- `libsodium-wrappers` for hashing, random bytes, and optional symmetric encryption helpers.
 - Semaphore packages for zk group membership proofs and verification.
 
 Load expensive WASM lazily behind user actions or async app initialization. Avoid SharedArrayBuffer-only paths because GitHub Pages cannot configure COOP/COEP headers.

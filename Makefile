@@ -23,7 +23,7 @@ dev:
 	npm run dev
 
 build:
-	VITE_APP_VERSION=$$(node -p "require('./package.json').version") VITE_GIT_COMMIT=$$(git rev-parse --short=12 HEAD 2>/dev/null || printf local) npm run build
+	npm run build
 
 data:
 	@printf '%s\n' "Mode A: no static data pipeline is required."

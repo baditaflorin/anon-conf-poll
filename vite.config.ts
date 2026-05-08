@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
@@ -9,29 +10,22 @@ export default defineConfig(({ mode }) => {
   return {
     base: "/anon-conf-poll/",
     plugins: [react()],
+    resolve: {
+      alias: {
+        "libsodium-wrappers": resolve(
+          process.cwd(),
+          "node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js"
+        )
+      }
+    },
     define: {
       __APP_VERSION__: JSON.stringify(version),
       __GIT_COMMIT__: JSON.stringify(commit.slice(0, 12))
     },
     build: {
       outDir: "docs",
-      emptyOutDir: true,
-      sourcemap: true,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            react: ["react", "react-dom"],
-            yjs: ["yjs", "y-webrtc"],
-            analytics: ["@duckdb/duckdb-wasm"],
-            proof: [
-              "@semaphore-protocol/group",
-              "@semaphore-protocol/identity",
-              "@semaphore-protocol/proof",
-              "libsodium-wrappers-sumo"
-            ]
-          }
-        }
-      }
+      emptyOutDir: false,
+      sourcemap: true
     },
     worker: {
       format: "es"

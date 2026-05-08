@@ -1,8 +1,10 @@
 # anon-conf-poll
 
-[Live GitHub Pages site](https://baditaflorin.github.io/anon-conf-poll/)  
-[GitHub repository](https://github.com/baditaflorin/anon-conf-poll)  
-[Support development](https://www.paypal.com/paypalme/florinbadita)
+Live GitHub Pages site: https://baditaflorin.github.io/anon-conf-poll/
+
+GitHub repository: https://github.com/baditaflorin/anon-conf-poll
+
+Support development: https://www.paypal.com/paypalme/florinbadita
 
 Static, anonymous live polling with CRDT sync, zk one-vote proofs, and local analytics.
 
@@ -19,6 +21,8 @@ make build
 ## What It Does
 
 `anon-conf-poll` lets attendees vote and submit Q&A from a shared URL. Poll state syncs between browsers with Yjs over WebRTC, eligibility is checked with Semaphore-style zero-knowledge membership proofs and per-poll nullifiers, and organizers can export/query results locally with DuckDB-WASM. The app is designed for GitHub Pages first: no application server, no attendee identity database, and no secrets in the frontend.
+
+![anon-conf-poll demo](docs/demo.png)
 
 ## Architecture
 
