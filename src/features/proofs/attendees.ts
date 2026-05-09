@@ -1,10 +1,11 @@
 import { Identity } from "@semaphore-protocol/identity";
 import { defaultPolls, makeId } from "../polls/room";
-import type { GeneratedRoom } from "../polls/types";
+import type { GeneratedRoom, Poll } from "../polls/types";
 
 export function createGeneratedRoom(
   attendeeCount = 24,
-  title = "Anonymous Conference Poll"
+  title = "Anonymous Conference Poll",
+  polls: Poll[] = defaultPolls
 ): GeneratedRoom {
   const roomId = makeId("room");
   const identities = Array.from({ length: attendeeCount }, () => new Identity());
@@ -21,7 +22,7 @@ export function createGeneratedRoom(
       roomId,
       title,
       createdAt: new Date().toISOString(),
-      polls: defaultPolls,
+      polls,
       attendeeCommitments: invites.map((invite) => invite.commitment),
       proofProfile: "semaphore-v4-groth16"
     },

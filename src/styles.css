@@ -186,6 +186,12 @@ button.primary {
   background: #fff1f3;
 }
 
+.toast span,
+.toast code {
+  display: block;
+  margin-top: 6px;
+}
+
 .busy {
   gap: 10px;
 }
@@ -370,6 +376,77 @@ textarea {
   margin: 0;
   color: var(--blue);
   font-weight: 800;
+}
+
+.inference-summary {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.inference-summary.high {
+  border-color: #7dbb96;
+}
+
+.inference-summary.medium {
+  border-color: #dfbd5d;
+}
+
+.inference-summary.low {
+  border-color: #d38996;
+}
+
+.inference-summary div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inference-summary span {
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.inference-summary p,
+.inference-summary ul {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.inference-summary ul {
+  padding-left: 18px;
+}
+
+.debug-panel {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111b19;
+  color: #e9fff8;
+  padding: 16px;
+}
+
+.debug-panel h2 {
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+}
+
+.debug-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
 }
 
 @keyframes spin {

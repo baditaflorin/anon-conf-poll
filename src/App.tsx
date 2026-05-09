@@ -1,5 +1,7 @@
 import {
   BarChart3,
+  Bug,
+  ClipboardList,
   Copy,
   Database,
   Download,
@@ -10,22 +12,21 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Wand2,
   Vote,
   Wifi
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { summarizeWithDuckDB, type DuckDbSummary } from "./features/analytics/duckdb";
-import {
-  decodeInvite,
-  decodeRoom,
-  encodeInvite,
-  encodeRoom,
-  inviteBelongsToRoom,
-  roomShareUrl
-} from "./features/polls/room";
+import { encodeInvite, encodeRoom, inviteBelongsToRoom, roomShareUrl } from "./features/polls/room";
 import { tallyVotes } from "./features/polls/tally";
 import type { Invite, RoomManifest, VerifiedQuestion, VerifiedVote } from "./features/polls/types";
 import { loadRecentRoom, saveRecentRoom } from "./features/storage/localStore";
+import { parseInviteInput } from "./features/substance/inviteInput";
+import { inferPolls, type PollPreview } from "./features/substance/pollInference";
+import { buildExportPayload } from "./features/substance/provenance";
+import { inferRoster, type RosterPreview } from "./features/substance/rosterInference";
+import { safeDecodeRoomInput, type SafeRoomResult } from "./features/substance/roomLink";
 import { useSyncedRoom } from "./features/sync/useSyncedRoom";
 import { appConfig } from "./shared/config";
 import { sanitizeError } from "./shared/logger";
@@ -40,17 +41,27 @@ type Toast = {
   message: string;
 } | null;
 
-type RoomSeed = { manifest: RoomManifest | null; invites: Invite[]; invite: Invite | null };
+type RoomSeed = {
+  manifest: RoomManifest | null;
+  invites: Invite[];
+  invite: Invite | null;
+  roomError?: Extract<SafeRoomResult, { ok: false }>;
+};
 type LoadedRoomSeed = { manifest: RoomManifest; invites: Invite[]; invite: Invite | null };
+type ActivityEvent = { at: string; label: string; detail: string };
 
 function initialRoom(): RoomSeed {
-  const decoded = decodeRoom(window.location.hash);
-
-  if (decoded) {
-    return { manifest: decoded, invites: [], invite: null };
+  if (!window.location.hash.includes("room=")) {
+    return { manifest: null, invites: [], invite: null };
   }
 
-  return { manifest: null, invites: [], invite: null };
+  const decoded = safeDecodeRoomInput(window.location.hash);
+
+  if (decoded.ok) {
+    return { manifest: decoded.manifest, invites: [], invite: null };
+  }
+
+  return { manifest: null, invites: [], invite: null, roomError: decoded };
 }
 
 export default function App() {
@@ -58,7 +69,7 @@ export default function App() {
   const [bootstrap, setBootstrap] = useState<RoomSeed>(seed);
 
   useEffect(() => {
-    if (bootstrap.manifest) {
+    if (bootstrap.manifest || bootstrap.roomError) {
       return;
     }
 
@@ -83,11 +94,34 @@ export default function App() {
     };
   }, [bootstrap.manifest]);
 
+  if (bootstrap.roomError) {
+    return (
+      <DamagedRoomScreen
+        error={bootstrap.roomError}
+        onCreateNew={() => {
+          void createDefaultRoom().then(setBootstrap);
+        }}
+      />
+    );
+  }
+
   if (!bootstrap.manifest) {
     return <BootScreen />;
   }
 
   return <RoomExperience seed={bootstrap as LoadedRoomSeed} />;
+}
+
+async function createDefaultRoom(): Promise<LoadedRoomSeed> {
+  const { createGeneratedRoom } = await import("./features/proofs/attendees");
+  const generated = createGeneratedRoom(24);
+  window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
+
+  return {
+    manifest: generated.manifest,
+    invites: generated.invites,
+    invite: generated.invites[0] ?? null
+  };
 }
 
 function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
@@ -96,6 +130,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [activeInvite, setActiveInvite] = useState<Invite | null>(seed.invite);
   const [attendeeCount, setAttendeeCount] = useState(seed.manifest.attendeeCommitments.length);
   const [roomTitle, setRoomTitle] = useState(seed.manifest.title);
+  const [rosterInput, setRosterInput] = useState("");
+  const [pollInput, setPollInput] = useState("");
+  const [rosterPreview, setRosterPreview] = useState<RosterPreview | null>(null);
+  const [pollPreview, setPollPreview] = useState<PollPreview | null>(null);
   const [inviteInput, setInviteInput] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
@@ -105,7 +143,9 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [busy, setBusy] = useState<BusyState>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [analytics, setAnalytics] = useState<DuckDbSummary | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const { votes, questions, status, peers, publishVote, publishQuestion } = useSyncedRoom(manifest);
+  const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
 
@@ -115,7 +155,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         return;
       }
 
-      if (!decodeRoom(window.location.hash)) {
+      if (!window.location.hash.includes("room=")) {
         setManifest(recent.manifest);
         setActiveInvite(recent.invite);
         setRoomTitle(recent.manifest.title);
@@ -129,6 +169,47 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   useEffect(() => {
     void saveRecentRoom(manifest, activeInvite);
   }, [manifest, activeInvite]);
+
+  useEffect(() => {
+    if (!rosterInput.trim()) {
+      setRosterPreview(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const preview = inferRoster(rosterInput);
+      setRosterPreview(preview);
+
+      if (preview.eligibleRows > 0) {
+        setAttendeeCount(preview.eligibleRows);
+      }
+
+      recordActivity(
+        "Roster inferred",
+        `${preview.eligibleRows} eligible, ${preview.duplicateRows} duplicate, ${preview.excludedRows} excluded`
+      );
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [rosterInput]);
+
+  useEffect(() => {
+    if (!pollInput.trim()) {
+      setPollPreview(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const preview = inferPolls(pollInput);
+      setPollPreview(preview);
+      recordActivity(
+        "Poll draft inferred",
+        `${preview.pollCount} poll(s), ${preview.confidence} confidence`
+      );
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [pollInput]);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,9 +277,11 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     setBusy({ label: "Generating commitments", detail: "Creating local Semaphore identities." });
     void import("./features/proofs/attendees")
       .then(({ createGeneratedRoom }) => {
+        const inferredPolls = pollPreview?.polls.filter((poll) => poll.options.length >= 2);
         const generated = createGeneratedRoom(
           attendeeCount,
-          roomTitle.trim() || "Anonymous Conference Poll"
+          roomTitle.trim() || "Anonymous Conference Poll",
+          inferredPolls && inferredPolls.length > 0 ? inferredPolls : undefined
         );
         setManifest(generated.manifest);
         setOrganizerInvites(generated.invites);
@@ -209,6 +292,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         setVerifiedQuestions([]);
         setAnalytics(null);
         window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
+        recordActivity(
+          "Room created",
+          `${generated.manifest.attendeeCommitments.length} invite(s), ${generated.manifest.polls.length} poll(s)`
+        );
         setToast({ tone: "good", message: "Room created with fresh commitments." });
       })
       .catch((error: unknown) => {
@@ -217,26 +304,49 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       .finally(() => setBusy(null));
   }
 
+  function recordActivity(label: string, detail: string) {
+    setActivity((current) =>
+      [
+        {
+          at: new Date().toISOString(),
+          label,
+          detail
+        },
+        ...current
+      ].slice(0, 12)
+    );
+  }
+
   async function copyText(value: string, message: string) {
     await navigator.clipboard.writeText(value);
     setToast({ tone: "good", message });
   }
 
   function importInvite() {
-    try {
-      const invite = decodeInvite(inviteInput);
+    const parsed = parseInviteInput(inviteInput);
 
-      if (!inviteBelongsToRoom(invite, manifest)) {
-        setToast({ tone: "bad", message: "Invite is valid, but not for this room." });
-        return;
-      }
-
-      setActiveInvite(invite);
-      setInviteInput("");
-      setToast({ tone: "good", message: "Invite loaded for this browser." });
-    } catch (error) {
-      setToast({ tone: "bad", message: sanitizeError(error) });
+    if (!parsed.ok) {
+      setToast({ tone: "bad", message: `${parsed.message} ${parsed.suggestion}` });
+      recordActivity("Invite rejected", parsed.message);
+      return;
     }
+
+    if (!inviteBelongsToRoom(parsed.invite, manifest)) {
+      setToast({
+        tone: "bad",
+        message: "Invite is valid, but it belongs to a different room. Ask for this room's invite."
+      });
+      recordActivity("Invite rejected", `Different room: ${parsed.roomId}`);
+      return;
+    }
+
+    setActiveInvite(parsed.invite);
+    setInviteInput("");
+    recordActivity(
+      "Invite loaded",
+      `${parsed.confidence} confidence; ${parsed.normalizations.join(", ") || "raw token"}`
+    );
+    setToast({ tone: "good", message: "Invite loaded for this browser." });
   }
 
   async function castVote(pollId: string) {
@@ -248,7 +358,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     }
 
     if (localVotedPollIds.has(pollId)) {
-      setToast({ tone: "warn", message: "This invite already has a verified vote for this poll." });
+      setToast({ tone: "warn", message: "This invite already has a counted vote for this poll." });
       return;
     }
 
@@ -274,13 +384,15 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       ) {
         setToast({
           tone: "warn",
-          message: "This invite already has a verified vote for this poll."
+          message: "This invite already has a counted vote for this poll."
         });
+        recordActivity("Duplicate vote blocked", pollId);
         return;
       }
 
       publishVote(voteRecord);
       setLocalVotedPollIds((current) => new Set(current).add(pollId));
+      recordActivity("Vote counted", pollId);
       setToast({ tone: "good", message: "Anonymous vote published." });
     } catch (error) {
       setToast({ tone: "bad", message: sanitizeError(error) });
@@ -313,11 +425,13 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         )
       ) {
         setToast({ tone: "warn", message: "This invite already has a verified Q&A submission." });
+        recordActivity("Duplicate question blocked", "One anonymous question already counted");
         return;
       }
 
       publishQuestion(questionRecord);
       setQuestionText("");
+      recordActivity("Question submitted", "Anonymous Q&A proof verified");
       setToast({ tone: "good", message: "Anonymous question published." });
     } catch (error) {
       setToast({ tone: "bad", message: sanitizeError(error) });
@@ -331,6 +445,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       setBusy({ label: "Starting DuckDB-WASM", detail: "Loading the local SQL engine." });
       const summary = await summarizeWithDuckDB(manifest, verifiedVotes);
       setAnalytics(summary);
+      recordActivity("DuckDB summary", `${summary.rows.length} result row(s)`);
       setToast({ tone: "good", message: "DuckDB summary refreshed." });
     } catch (error) {
       setToast({ tone: "bad", message: sanitizeError(error) });
@@ -340,10 +455,14 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   }
 
   function downloadResults(kind: "json" | "csv") {
-    const payload =
-      kind === "json"
-        ? JSON.stringify({ manifest, votes: verifiedVotes, questions: verifiedQuestions }, null, 2)
-        : toCsv(verifiedVotes);
+    const exportPayload = buildExportPayload({
+      manifest,
+      votes: verifiedVotes,
+      questions: verifiedQuestions,
+      rosterPreview,
+      pollPreview
+    });
+    const payload = kind === "json" ? JSON.stringify(exportPayload, null, 2) : toCsv(verifiedVotes);
     const blob = new Blob([payload], { type: kind === "json" ? "application/json" : "text/csv" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -351,6 +470,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     anchor.download = `${manifest.roomId}-results.${kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
+    recordActivity("Results exported", `${kind.toUpperCase()} with provenance metadata`);
   }
 
   const currentInviteCode = activeInvite ? encodeInvite(activeInvite) : "";
@@ -435,6 +555,42 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               onChange={(event) => setAttendeeCount(Number(event.target.value))}
             />
           </label>
+          <label>
+            <span>Roster CSV</span>
+            <textarea
+              value={rosterInput}
+              onChange={(event) => setRosterInput(event.target.value)}
+              placeholder="Paste attendee roster CSV"
+              rows={4}
+            />
+          </label>
+          {rosterPreview ? (
+            <InferenceSummary
+              icon={<ClipboardList size={16} />}
+              title={`${rosterPreview.eligibleRows} eligible attendee(s)`}
+              confidence={rosterPreview.confidence}
+              detail={`${rosterPreview.sourceKind} shape · ${rosterPreview.duplicateRows} duplicate · ${rosterPreview.excludedRows} excluded`}
+              issues={rosterPreview.issues.slice(0, 3).map((issue) => issue.message)}
+            />
+          ) : null}
+          <label>
+            <span>Poll draft</span>
+            <textarea
+              value={pollInput}
+              onChange={(event) => setPollInput(event.target.value)}
+              placeholder="Paste poll text or poll CSV"
+              rows={4}
+            />
+          </label>
+          {pollPreview ? (
+            <InferenceSummary
+              icon={<Wand2 size={16} />}
+              title={`${pollPreview.pollCount} inferred poll(s)`}
+              confidence={pollPreview.confidence}
+              detail={pollPreview.optionCounts.map((count) => `${count} options`).join(", ")}
+              issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
+            />
+          ) : null}
           <button type="button" className="primary" onClick={startNewRoom}>
             <RefreshCw size={18} aria-hidden="true" />
             New room
@@ -593,6 +749,43 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           )}
         </section>
       </div>
+      {debugEnabled ? (
+        <section className="debug-panel" aria-label="Debug state">
+          <h2>
+            <Bug size={18} aria-hidden="true" />
+            Debug
+          </h2>
+          <pre>
+            {JSON.stringify(
+              {
+                version: appConfig.version,
+                commit: appConfig.commit,
+                roomId: manifest.roomId,
+                roster: rosterPreview
+                  ? {
+                      sourceKind: rosterPreview.sourceKind,
+                      confidence: rosterPreview.confidence,
+                      eligibleRows: rosterPreview.eligibleRows,
+                      duplicateRows: rosterPreview.duplicateRows,
+                      excludedRows: rosterPreview.excludedRows,
+                      checksum: rosterPreview.meta.sourceChecksum
+                    }
+                  : null,
+                polls: pollPreview
+                  ? {
+                      confidence: pollPreview.confidence,
+                      pollCount: pollPreview.pollCount,
+                      checksum: pollPreview.meta.sourceChecksum
+                    }
+                  : null,
+                activity
+              },
+              null,
+              2
+            )}
+          </pre>
+        </section>
+      ) : null}
     </main>
   );
 }
@@ -613,6 +806,62 @@ function BootScreen() {
   );
 }
 
+function DamagedRoomScreen({
+  error,
+  onCreateNew
+}: {
+  error: Extract<SafeRoomResult, { ok: false }>;
+  onCreateNew: () => void;
+}) {
+  return (
+    <main className="boot-screen">
+      <img src="/anon-conf-poll/icon.svg" alt="" className="brand-mark" />
+      <h1>Room link needs attention</h1>
+      <div className="toast bad">
+        <strong>{error.message}</strong>
+        <span>{error.suggestion}</span>
+        {error.fieldIssues.length > 0 ? <code>{error.fieldIssues.join(", ")}</code> : null}
+      </div>
+      <button type="button" className="primary" onClick={onCreateNew}>
+        <RefreshCw size={18} aria-hidden="true" />
+        Create new room
+      </button>
+    </main>
+  );
+}
+
+function InferenceSummary({
+  icon,
+  title,
+  confidence,
+  detail,
+  issues
+}: {
+  icon: ReactNode;
+  title: string;
+  confidence: string;
+  detail: string;
+  issues: string[];
+}) {
+  return (
+    <div className={`inference-summary ${confidence}`}>
+      <div>
+        {icon}
+        <strong>{title}</strong>
+        <span>{confidence}</span>
+      </div>
+      <p>{detail}</p>
+      {issues.length > 0 ? (
+        <ul>
+          {issues.map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function Status({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="status">
@@ -621,6 +870,12 @@ function Status({ icon, label, value }: { icon: ReactNode; label: string; value:
       <strong>{value}</strong>
     </div>
   );
+}
+
+function isDebugEnabled(): boolean {
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return query.get("debug") === "1" || hash.get("debug") === "1";
 }
 
 function uniqueQuestions(questions: VerifiedQuestion[]): VerifiedQuestion[] {
