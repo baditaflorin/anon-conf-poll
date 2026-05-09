@@ -631,3 +631,39 @@ textarea {
   color: var(--text-secondary, #888);
   margin: 0;
 }
+
+.attendee-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.attendee-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2, #f4f4f4);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.attendee-link-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #888);
+  min-width: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.attendee-link-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  background: var(--surface, white);
+}

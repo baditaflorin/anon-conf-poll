@@ -1020,40 +1020,38 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
           {organizerInvites.length > 0 ? (
             <>
+              <h3>Attendee links</h3>
               <p className="attendee-link-hint">
-                Share a unique link with each attendee — one link per person, each ready to vote immediately.
+                Each link is unique. One per person. Opening it loads the room and invite automatically — no paste step.
               </p>
-              <div className="button-row">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const links = organizerInvites
-                      .map((inv, i) => `Attendee ${i + 1}: ${attendeeShareUrl(manifest, inv)}`)
-                      .join("\n");
-                    downloadTextFile(
-                      `${manifest.roomId}-attendee-links.txt`,
-                      `${links}\n`,
-                      "text/plain"
-                    );
-                  }}
-                >
-                  <Download size={18} aria-hidden="true" />
-                  Attendee links
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadTextFile(
-                      `${manifest.roomId}-invites.json`,
-                      `${JSON.stringify(organizerInvites.map(encodeInvite), null, 2)}\n`,
-                      "application/json"
-                    )
-                  }
-                >
-                  <Download size={18} aria-hidden="true" />
-                  Raw roster
-                </button>
+              <div className="attendee-link-list">
+                {organizerInvites.map((inv, i) => (
+                  <div key={inv.commitment} className="attendee-link-row">
+                    <span className="attendee-link-label">#{i + 1}</span>
+                    <button
+                      type="button"
+                      className="attendee-link-copy"
+                      onClick={() => void copyText(attendeeShareUrl(manifest, inv), `Link #${i + 1} copied.`)}
+                    >
+                      <Copy size={14} aria-hidden="true" />
+                      Copy link
+                    </button>
+                  </div>
+                ))}
               </div>
+              <button
+                type="button"
+                onClick={() =>
+                  downloadTextFile(
+                    `${manifest.roomId}-invites.json`,
+                    `${JSON.stringify(organizerInvites.map(encodeInvite), null, 2)}\n`,
+                    "application/json"
+                  )
+                }
+              >
+                <Download size={18} aria-hidden="true" />
+                Export raw invites
+              </button>
             </>
           ) : null}
 
