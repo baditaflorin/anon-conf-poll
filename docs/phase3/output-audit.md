@@ -23,3 +23,23 @@ Status reflects the app after Phase 2 substance work and before Phase 3 implemen
 - Green: 3
 - Yellow: 3
 - Red: 7
+
+## Final Status After Phase 3
+
+| Exit path               | Final status                | Evidence                                                        |
+| ----------------------- | --------------------------- | --------------------------------------------------------------- |
+| Copy room URL           | Green                       | Shared clipboard helper with fallback errors.                   |
+| Copy active invite      | Green                       | Shared clipboard helper with fallback errors.                   |
+| Download invite roster  | Green                       | Canonical download helper writes invite JSON.                   |
+| Download results JSON   | Green                       | Provenance JSON remains available.                              |
+| Download vote CSV       | Green                       | Label now says vote CSV and output is copyable/downloadable.    |
+| Copy results JSON/CSV   | Green                       | Dedicated copy buttons for JSON and vote CSV.                   |
+| Downloadable state file | Green                       | Versioned app-state JSON export.                                |
+| Import exported state   | Green                       | Same schema imports and migrates.                               |
+| Shareable URL           | Green with documented limit | Room URL remains hash-based; state files cover large workflows. |
+| Print-friendly view     | Green                       | Print button and print CSS hide setup chrome.                   |
+| Screenshot/export image | Out of scope                | No claim.                                                       |
+| Embed code              | Out of scope                | No claim.                                                       |
+| API/curl output         | Out of scope                | Mode A has no runtime API.                                      |
+
+Final: 10 green, 0 yellow, 0 red, 3 out of scope.

@@ -25,3 +25,25 @@ Status reflects the app after Phase 2 substance work and before Phase 3 implemen
 - Green: 4
 - Yellow: 3
 - Red: 8
+
+## Final Status After Phase 3
+
+| Entry point           | Final status | Evidence                                                                                                               |
+| --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Paste roster CSV      | Green        | Existing textarea remains covered by e2e smoke.                                                                        |
+| Paste poll text/CSV   | Green        | Existing textarea remains covered by e2e smoke.                                                                        |
+| Paste invite code     | Green        | Fixture parser and UI import path remain covered.                                                                      |
+| Room URL deep link    | Green        | Safe room decoder accepts hashes and full URLs.                                                                        |
+| Restored autosave     | Green        | Versioned app-state persistence restores room setup, drafts, selected options, invite, activity, and raw sync records. |
+| File upload           | Green        | `Import files` accepts CSV/TXT/JSON and is covered by Playwright.                                                      |
+| Drag/drop             | Green        | The room-control panel handles dropped CSV/TXT/JSON files through the same router.                                     |
+| Multi-file input      | Green        | The file router processes multiple files with per-file activity/toast outcomes.                                        |
+| Imported state        | Green        | State JSON imports through file/drop/route and validates with Zod.                                                     |
+| Clipboard read button | Green        | Invite clipboard read has permission failure fallback.                                                                 |
+| URL input field       | Green        | Room URLs, `#room=...`, and invite-like text route through the same classifier.                                        |
+| Mobile file sources   | Green        | Standard file picker is available to mobile browser file providers.                                                    |
+| Sample/demo loader    | Green        | Sample roster and poll draft button exercises real input paths.                                                        |
+| Folder input          | Out of scope | ADR 0061: not meaningful for the single-room static workflow.                                                          |
+| Image paste/camera    | Out of scope | ADR 0061: no OCR/image parsing claim.                                                                                  |
+
+Final: 13 green, 0 yellow, 0 red, 2 out of scope.

@@ -24,3 +24,19 @@ Status reflects README, ADRs, postmortems, and in-app copy after Phase 2 substan
 - Green: 7
 - Yellow: 5
 - Red: 2
+
+## Final Status After Phase 3
+
+| Claim area                     | Final status          | Evidence                                                             |
+| ------------------------------ | --------------------- | -------------------------------------------------------------------- |
+| Live Pages/repo/PayPal/version | Green                 | Header and README remain true; version updates in the release build. |
+| Vote/Q&A through URL           | Green                 | Existing workflow unchanged.                                         |
+| Roster/poll import             | Green                 | README now says rosters/poll drafts, not attendee commitments.       |
+| Yjs/WebRTC mesh                | Green with limitation | README documents browser mesh limits.                                |
+| One-vote proofs                | Green with limitation | README documents proof path and e2e artifact limits honestly.        |
+| DuckDB analytics               | Green                 | Smoke test initializes DuckDB.                                       |
+| JSON/CSV exports               | Green                 | README distinguishes provenance JSON from vote CSV.                  |
+| PWA/offline                    | Green with limitation | README avoids service-worker offline claims.                         |
+| State import/export            | Green                 | Versioned state file is implemented and tested.                      |
+
+Final: 9 claim areas aligned; 0 known docs/reality mismatches.

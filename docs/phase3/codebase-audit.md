@@ -40,3 +40,18 @@ No unsafe `any` or `@ts-ignore` is present. The remaining `unknown` casts are at
 3. Clipboard fallback behavior.
 4. Reset/start-fresh persistence clearing.
 5. README claim drift.
+
+## Final Status After Phase 3
+
+| Metric                           | Before                  | After                                                                                                                   |
+| -------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Largest module                   | `src/App.tsx` 923 lines | `src/App.tsx` 1,343 lines; intentionally accepted because Phase 3 added UI wiring while extracting IO/state boundaries. |
+| TODO/FIXME/XXX/HACK              | 0                       | 0                                                                                                                       |
+| Unsafe `any` / ts-ignore         | 0                       | 0                                                                                                                       |
+| Intentional `unknown` boundaries | 4                       | 4; all remain at JSON/DuckDB fixture boundaries.                                                                        |
+| Duplicated download code         | 2 blocks                | 0; `features/io/downloads.ts` owns downloads/clipboard/print.                                                           |
+| State schema                     | Unversioned recent room | Versioned `AppStateSnapshot` with migration from legacy shape.                                                          |
+| Boundary validation              | Partial                 | State import validates with Zod; room/invite validation unchanged.                                                      |
+| Real-user path tests             | Partial                 | Added state round-trip, file-routing unit test, and Playwright file import/state download smoke.                        |
+
+Accepted debt: `RoomExperience` is still too large. ADR 0064 rejects a broad component refactor in Phase 3 because it would not unblock strangers as directly as the completed import/export work.

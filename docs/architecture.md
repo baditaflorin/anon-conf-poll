@@ -7,7 +7,7 @@
 ```mermaid
 C4Context
     title Context
-    Person(organizer, "Organizer", "Creates rooms, imports attendee commitments, exports results")
+    Person(organizer, "Organizer", "Creates rooms, imports rosters/poll drafts, exports results")
     Person(attendee, "Attendee", "Votes and submits Q&A anonymously")
     System_Boundary(pages, "GitHub Pages") {
       System(app, "anon-conf-poll", "Static React app")

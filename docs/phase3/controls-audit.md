@@ -32,3 +32,22 @@ Status reflects the app after Phase 2 substance work and before Phase 3 implemen
 - Green: 15
 - Yellow: 5
 - Red: 2
+
+## Final Status After Phase 3
+
+| Control group              | Final status                       | Evidence                                                                         |
+| -------------------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| Project links              | Green                              | Repository and PayPal links unchanged.                                           |
+| Room link copy/open        | Green                              | Copy and URL import both work.                                                   |
+| File/drop import           | Green                              | File picker and drop route CSV/TXT/JSON.                                         |
+| Sample data                | Green                              | Loads real roster/poll draft examples.                                           |
+| Title/attendees/new room   | Green                              | Attendee count clamps to 4-256 and new-room button is busy-safe.                 |
+| Roster/poll draft controls | Green                              | Paste and file paths both feed inference.                                        |
+| Invite load/copy/paste     | Green                              | Manual, clipboard, and routed import paths work.                                 |
+| Invite roster              | Green                              | Downloads invite JSON through the shared helper.                                 |
+| Voting/Q&A                 | Green with known mesh timing limit | Local duplicate blocks remain; cross-device duplicate timing remains documented. |
+| DuckDB/results             | Green                              | Run, download, copy, state, and print controls are wired.                        |
+| Start fresh                | Green                              | Clears IndexedDB state and creates a new room.                                   |
+| Damaged-link recovery      | Green                              | Creates a new room from recovery screen.                                         |
+
+Final: 21 green-equivalent controls, 1 documented limitation, 0 red controls.
