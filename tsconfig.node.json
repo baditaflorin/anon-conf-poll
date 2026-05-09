@@ -16,6 +16,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.integration.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "scripts/*.ts"
   ]
 }

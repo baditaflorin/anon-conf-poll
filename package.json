@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "smoke": "bash scripts/smoke.sh",
+    "perf:phase2": "tsx scripts/measure-phase2.ts",
     "lint": "eslint . --max-warnings=0",
     "fmt": "prettier --write .",
     "fmt:check": "prettier --check .",
@@ -74,6 +75,7 @@
     "postcss": "^8.5.6",
     "prettier": "^3.7.4",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.48.0",
     "vitest": "^4.0.15"

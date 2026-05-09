@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-05-09T15:23:32.835Z",
+  "samplesPerTask": 20,
+  "results": [
+    {
+      "name": "invite-clean",
+      "medianMs": 0.096,
+      "p95Ms": 2.138,
+      "worstMs": 2.138
+    },
+    {
+      "name": "invite-wrapped",
+      "medianMs": 0.09,
+      "p95Ms": 0.496,
+      "worstMs": 0.496
+    },
+    {
+      "name": "roster-eventbrite",
+      "medianMs": 0.13,
+      "p95Ms": 5.216,
+      "worstMs": 5.216
+    },
+    {
+      "name": "roster-zoom",
+      "medianMs": 0.12,
+      "p95Ms": 0.718,
+      "worstMs": 0.718
+    },
+    {
+      "name": "poll-text",
+      "medianMs": 0.099,
+      "p95Ms": 1.245,
+      "worstMs": 1.245
+    },
+    {
+      "name": "poll-csv",
+      "medianMs": 0.122,
+      "p95Ms": 1.431,
+      "worstMs": 1.431
+    },
+    {
+      "name": "room-corrupt",
+      "medianMs": 0.043,
+      "p95Ms": 1.005,
+      "worstMs": 1.005
+    },
+    {
+      "name": "room-legacy",
+      "medianMs": 0.064,
+      "p95Ms": 1.531,
+      "worstMs": 1.531
+    },
+    {
+      "name": "roster-5000",
+      "medianMs": 10.005,
+      "p95Ms": 26.497,
+      "worstMs": 26.497
+    }
+  ]
+}

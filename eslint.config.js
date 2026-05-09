@@ -46,7 +46,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ["*.config.ts", "vite.config.ts", "playwright.config.ts"],
+    files: ["*.config.ts", "vite.config.ts", "playwright.config.ts", "scripts/*.ts"],
     languageOptions: {
       globals: globals.node
     }

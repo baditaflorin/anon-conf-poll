@@ -75,6 +75,14 @@ describe("Phase 2 real-data fixtures", () => {
 
     expect(actual).toEqual(expected);
   });
+
+  it("produces deterministic inference outputs for repeated runs", () => {
+    const roster = readFixture("04-eventbrite-roster.csv");
+    const polls = readFixture("06-agenda-poll.input.txt");
+
+    expect(inferRoster(roster)).toEqual(inferRoster(roster));
+    expect(inferPolls(polls)).toEqual(inferPolls(polls));
+  });
 });
 
 function readFixture(name: string): string {

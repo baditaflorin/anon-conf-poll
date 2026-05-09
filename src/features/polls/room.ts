@@ -1,6 +1,8 @@
-import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
+import lzString from "lz-string";
 import { z } from "zod";
 import type { Invite, Poll, RoomManifest } from "./types";
+
+const { compressToEncodedURIComponent, decompressFromEncodedURIComponent } = lzString;
 
 const optionSchema = z.object({
   id: z.string().min(1),
