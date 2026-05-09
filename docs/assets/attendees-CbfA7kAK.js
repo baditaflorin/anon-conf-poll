@@ -1,2 +1,0 @@
-import{n as e,t}from"./index-Cwttf1ZX.js";import{t as n}from"./dist-C_R-_lit.js";function r(r=24,i=`Anonymous Conference Poll`){let a=e(`room`),o=Array.from({length:r},()=>new n).map(e=>({schemaVersion:1,roomId:a,privateKey:e.export(),commitment:e.commitment.toString()}));return{manifest:{schemaVersion:1,roomId:a,title:i,createdAt:new Date().toISOString(),polls:t,attendeeCommitments:o.map(e=>e.commitment),proofProfile:`semaphore-v4-groth16`},invites:o}}export{r as createGeneratedRoom};
-//# sourceMappingURL=attendees-CbfA7kAK.js.map
