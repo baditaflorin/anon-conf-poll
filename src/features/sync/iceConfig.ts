@@ -7,15 +7,26 @@ export type IceServer = {
 const ICE_KEY = "anon-conf-poll:iceServers";
 const SIGNALING_KEY = "anon-conf-poll:signalingUrl";
 
+// openrelay.metered.ca is a free public TURN relay — no account needed.
+// It handles mobile↔desktop and cross-network connections where STUN alone fails.
 export const DEFAULT_ICE_SERVERS: IceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80",   username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turns:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
+
+const STUN_ONLY_FINGERPRINT = JSON.stringify([
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+]);
 
 export function loadIceServers(): IceServer[] {
   try {
     const raw = localStorage.getItem(ICE_KEY);
-    if (raw) {
+    if (raw && raw !== STUN_ONLY_FINGERPRINT) {
       const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed) && parsed.length > 0) return parsed as IceServer[];
     }
