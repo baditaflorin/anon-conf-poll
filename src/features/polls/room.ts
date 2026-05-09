@@ -103,6 +103,24 @@ export function roomShareUrl(manifest: RoomManifest, href = currentHref()): stri
   return url.toString();
 }
 
+export function attendeeShareUrl(manifest: RoomManifest, invite: Invite, href = currentHref()): string {
+  const url = new URL(href);
+  url.hash = `${encodeRoom(manifest)}&invite=${encodeInvite(invite)}`;
+  return url.toString();
+}
+
+export function decodeInviteFromHash(hash: string): Invite | null {
+  const rawHash = hash.startsWith("#") ? hash.slice(1) : hash;
+  const params = new URLSearchParams(rawHash);
+  const encoded = params.get("invite");
+  if (!encoded) return null;
+  try {
+    return decodeInvite(encoded);
+  } catch {
+    return null;
+  }
+}
+
 export function makeId(prefix: string): string {
   const random = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `${prefix}-${random.replace(/-/g, "").slice(0, 16)}`;

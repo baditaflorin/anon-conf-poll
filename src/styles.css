@@ -625,3 +625,9 @@ textarea {
   color: var(--text-secondary, #888);
   margin: 0;
 }
+
+.attendee-link-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #888);
+  margin: 0;
+}

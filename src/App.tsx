@@ -32,7 +32,7 @@ import {
   printReport,
   readClipboardText
 } from "./features/io/downloads";
-import { encodeInvite, encodeRoom, inviteBelongsToRoom, roomShareUrl } from "./features/polls/room";
+import { attendeeShareUrl, decodeInviteFromHash, encodeInvite, encodeRoom, inviteBelongsToRoom, roomShareUrl } from "./features/polls/room";
 import { tallyVotes } from "./features/polls/tally";
 import type {
   Invite,
@@ -94,7 +94,8 @@ function initialRoom(): RoomSeed {
   const decoded = safeDecodeRoomInput(window.location.hash);
 
   if (decoded.ok) {
-    return { manifest: decoded.manifest, invites: [], invite: null };
+    const invite = decodeInviteFromHash(window.location.hash);
+    return { manifest: decoded.manifest, invites: [], invite };
   }
 
   return { manifest: null, invites: [], invite: null, roomError: decoded };
@@ -1018,19 +1019,42 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           </div>
 
           {organizerInvites.length > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                downloadTextFile(
-                  `${manifest.roomId}-invites.json`,
-                  `${JSON.stringify(organizerInvites.map(encodeInvite), null, 2)}\n`,
-                  "application/json"
-                )
-              }
-            >
-              <Download size={18} aria-hidden="true" />
-              Invite roster
-            </button>
+            <>
+              <p className="attendee-link-hint">
+                Share a unique link with each attendee — one link per person, each ready to vote immediately.
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const links = organizerInvites
+                      .map((inv, i) => `Attendee ${i + 1}: ${attendeeShareUrl(manifest, inv)}`)
+                      .join("\n");
+                    downloadTextFile(
+                      `${manifest.roomId}-attendee-links.txt`,
+                      `${links}\n`,
+                      "text/plain"
+                    );
+                  }}
+                >
+                  <Download size={18} aria-hidden="true" />
+                  Attendee links
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadTextFile(
+                      `${manifest.roomId}-invites.json`,
+                      `${JSON.stringify(organizerInvites.map(encodeInvite), null, 2)}\n`,
+                      "application/json"
+                    )
+                  }
+                >
+                  <Download size={18} aria-hidden="true" />
+                  Raw roster
+                </button>
+              </div>
+            </>
           ) : null}
 
           <div className="divider" />
