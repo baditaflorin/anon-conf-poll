@@ -97,8 +97,8 @@ export function inviteBelongsToRoom(invite: Invite, manifest: RoomManifest): boo
   );
 }
 
-export function roomShareUrl(manifest: RoomManifest): string {
-  const url = new URL(window.location.href);
+export function roomShareUrl(manifest: RoomManifest, href = currentHref()): string {
+  const url = new URL(href);
   url.hash = encodeRoom(manifest);
   return url.toString();
 }
@@ -106,4 +106,12 @@ export function roomShareUrl(manifest: RoomManifest): string {
 export function makeId(prefix: string): string {
   const random = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `${prefix}-${random.replace(/-/g, "").slice(0, 16)}`;
+}
+
+function currentHref(): string {
+  const runtimeGlobal = globalThis as typeof globalThis & {
+    location?: { href?: string };
+  };
+
+  return runtimeGlobal.location?.href ?? "https://baditaflorin.github.io/anon-conf-poll/";
 }

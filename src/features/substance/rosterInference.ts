@@ -29,12 +29,19 @@ export function inferRoster(input: string): RosterPreview {
   const rows = parsed.data.filter((row) => Object.values(row).some(Boolean));
   const fieldRoles = inferFieldRoles(fields);
   const sourceKind = inferSourceKind(fields);
-  const issues: InferenceIssue[] = parsed.errors.map((error) => ({
-    code: "csv-parse-warning",
-    message: error.message,
-    severity: "warning",
-    row: error.row
-  }));
+  const issues: InferenceIssue[] = parsed.errors.map((error) => {
+    const issue: InferenceIssue = {
+      code: "csv-parse-warning",
+      message: error.message,
+      severity: "warning"
+    };
+
+    if (typeof error.row === "number") {
+      issue.row = error.row;
+    }
+
+    return issue;
+  });
 
   let eligibleRows = 0;
   let duplicateRows = 0;
@@ -52,7 +59,7 @@ export function inferRoster(input: string): RosterPreview {
         message: "Roster row has no usable email address.",
         severity: "warning",
         row: index + 2,
-        field: fieldRoles.email,
+        ...(fieldRoles.email ? { field: fieldRoles.email } : {}),
         suggestion: "Skip this row or add an email before generating invites."
       });
       return;
@@ -65,7 +72,7 @@ export function inferRoster(input: string): RosterPreview {
         message: `Roster row status "${status}" is not eligible for voting.`,
         severity: "info",
         row: index + 2,
-        field: fieldRoles.status,
+        ...(fieldRoles.status ? { field: fieldRoles.status } : {}),
         suggestion: "Review the eligibility status if this attendee should vote."
       });
       return;
@@ -78,7 +85,7 @@ export function inferRoster(input: string): RosterPreview {
         message: "Duplicate attendee email detected.",
         severity: "warning",
         row: index + 2,
-        field: fieldRoles.email,
+        ...(fieldRoles.email ? { field: fieldRoles.email } : {}),
         suggestion: "Keep the first invite unless this is a legitimate group ticket."
       });
       return;

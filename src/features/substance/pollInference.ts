@@ -43,12 +43,19 @@ function tryInferCsvPolls(input: string): PollPreview | null {
     return null;
   }
 
-  const issues = parsed.errors.map((error) => ({
-    code: "csv-parse-warning",
-    message: error.message,
-    severity: "warning" as const,
-    row: error.row
-  }));
+  const issues = parsed.errors.map((error) => {
+    const issue: InferenceIssue = {
+      code: "csv-parse-warning",
+      message: error.message,
+      severity: "warning"
+    };
+
+    if (typeof error.row === "number") {
+      issue.row = error.row;
+    }
+
+    return issue;
+  });
   const groups = new Map<string, { title: string; options: string[] }>();
   const idSeen = new Set<string>();
 

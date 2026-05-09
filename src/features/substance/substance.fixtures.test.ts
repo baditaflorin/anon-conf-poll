@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { DuplicateVoteInput } from "./duplicateVote";
 import { summarizeDuplicateVotes } from "./duplicateVote";
 import { parseInviteInput } from "./inviteInput";
 import { inferPolls } from "./pollInference";
@@ -70,7 +71,9 @@ describe("Phase 2 real-data fixtures", () => {
   });
 
   it("summarizes duplicate nullifiers honestly", () => {
-    const actual = summarizeDuplicateVotes(readJson("10-duplicate-nullifier.json"));
+    const actual = summarizeDuplicateVotes(
+      readJson<DuplicateVoteInput>("10-duplicate-nullifier.json")
+    );
     const expected = readJson("10-duplicate-nullifier.expected.json");
 
     expect(actual).toEqual(expected);
@@ -89,8 +92,8 @@ function readFixture(name: string): string {
   return readFileSync(join(fixtureDir, name), "utf8");
 }
 
-function readJson(name: string) {
-  return JSON.parse(readFixture(name)) as unknown;
+function readJson<T = unknown>(name: string): T {
+  return JSON.parse(readFixture(name)) as T;
 }
 
 function projectInvite(result: ReturnType<typeof parseInviteInput>) {
