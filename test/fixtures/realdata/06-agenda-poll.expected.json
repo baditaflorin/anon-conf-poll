@@ -1,0 +1,7 @@
+{
+  "kind": "polls",
+  "pollCount": 2,
+  "optionCounts": [4, 4],
+  "confidence": "high",
+  "pollIds": ["what-should-this-session-optimize-for", "confidence-check"]
+}

@@ -1,0 +1,7 @@
+{
+  "kind": "invite",
+  "ok": true,
+  "roomId": "room-fixture001",
+  "commitment": "12345",
+  "confidence": "high"
+}

@@ -1,0 +1,6 @@
+First Name,Last Name,Email,Registration Time,Approval Status
+Iris,Neagu,iris@example.com,2026-05-01 09:30,approved
+Jon,Lee,jon@example.com,2026-05-01 09:35,pending
+Kara,Nagy,kara@example.com,2026-05-01 09:40,approved
+Luca,Rossi,luca@example.com,2026-05-01 09:45,cancelled
+Mira,Chen,mira@example.com,2026-05-01 09:50,approved

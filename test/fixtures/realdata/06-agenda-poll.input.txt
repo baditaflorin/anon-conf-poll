@@ -1,0 +1,11 @@
+Opening poll: What should this session optimize for?
+- Practical demos
+- Architecture depth
+- Security review
+- Open Q&A
+
+Confidence check — how comfortable are you with anonymous polling?
+A) New to it
+B) Curious
+C) Comfortable
+D) I can review proofs

@@ -1,0 +1,7 @@
+{
+  "kind": "polls",
+  "pollCount": 2,
+  "optionCounts": [3, 2],
+  "confidence": "high",
+  "pollIds": ["p1", "p2"]
+}

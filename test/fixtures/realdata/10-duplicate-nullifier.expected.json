@@ -1,0 +1,6 @@
+{
+  "kind": "duplicate-vote",
+  "countedVotes": 1,
+  "duplicateVotes": 1,
+  "message": "This invite already has a counted vote for this poll."
+}

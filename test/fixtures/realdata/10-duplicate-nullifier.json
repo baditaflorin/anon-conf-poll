@@ -1,0 +1,17 @@
+{
+  "pollId": "opening-priority",
+  "votes": [
+    {
+      "id": "vote-a",
+      "optionId": "practical",
+      "nullifier": "same",
+      "createdAt": "2026-05-09T10:00:00.000Z"
+    },
+    {
+      "id": "vote-b",
+      "optionId": "security",
+      "nullifier": "same",
+      "createdAt": "2026-05-09T10:00:01.000Z"
+    }
+  ]
+}

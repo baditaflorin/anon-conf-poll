@@ -1,0 +1,6 @@
+﻿Order #,First Name,Last Name,Email,Ticket Type,Checked In
+1001,Ana,Popescu,ana@example.com,General Admission,Yes
+1002,Bogdan,Ionescu,bogdan@example.com,General Admission,No
+1003,Ana,Popescu,ana@example.com,General Admission,No
+1004,Chris,Smith,,General Admission,No
+1005,Dana,Marin,dana@example.com,Speaker,Yes

@@ -1,0 +1,15 @@
+{
+  "kind": "roster",
+  "sourceKind": "eventbrite",
+  "eligibleRows": 3,
+  "duplicateRows": 1,
+  "excludedRows": 1,
+  "confidence": "high",
+  "fieldRoles": {
+    "email": "Email",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "ticketType": "Ticket Type",
+    "status": "Checked In"
+  }
+}

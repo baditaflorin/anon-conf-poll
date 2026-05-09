@@ -1,0 +1,14 @@
+{
+  "kind": "roster",
+  "sourceKind": "zoom",
+  "eligibleRows": 3,
+  "duplicateRows": 0,
+  "excludedRows": 2,
+  "confidence": "high",
+  "fieldRoles": {
+    "email": "Email",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "status": "Approval Status"
+  }
+}
