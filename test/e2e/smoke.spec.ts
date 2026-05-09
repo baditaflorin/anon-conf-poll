@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { join } from "node:path";
 
 test("static app loads with project links and local DuckDB analytics", async ({ page }) => {
   await page.goto("/");
@@ -17,6 +18,15 @@ test("static app loads with project links and local DuckDB analytics", async ({ 
     timeout: 15_000
   });
 
+  await page
+    .getByLabel("Import files")
+    .setInputFiles([
+      join(process.cwd(), "test/fixtures/realdata/04-eventbrite-roster.csv"),
+      join(process.cwd(), "test/fixtures/realdata/07-poll-spreadsheet.csv")
+    ]);
+  await expect(page.getByText("3 eligible attendee(s)")).toBeVisible();
+  await expect(page.getByText("2 inferred poll(s)")).toBeVisible();
+
   await page.getByLabel("Roster CSV").fill(`First Name,Last Name,Email,Approval Status
 Ada,Lovelace,ada@example.com,approved
 Grace,Hopper,grace@example.com,approved`);
@@ -27,6 +37,11 @@ Grace,Hopper,grace@example.com,approved`);
 - Better invite parsing
 - Debug view`);
   await expect(page.getByText("1 inferred poll(s)")).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download state" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toContain("-state.json");
 
   await page.getByTitle("Run DuckDB").click();
   await expect(page.locator(".duckdb-summary")).toContainText("DuckDB", { timeout: 20_000 });

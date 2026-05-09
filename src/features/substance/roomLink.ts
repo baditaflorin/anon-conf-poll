@@ -15,7 +15,7 @@ export type SafeRoomResult =
     };
 
 export function safeDecodeRoomInput(input: string): SafeRoomResult {
-  const trimmed = input.trim();
+  const trimmed = normalizeRoomInput(input);
 
   if (!trimmed) {
     return damaged("The room link is empty.");
@@ -67,4 +67,19 @@ function damaged(message: string): SafeRoomResult {
     suggestion: "Paste the complete room link again or create a new room.",
     fieldIssues: []
   };
+}
+
+function normalizeRoomInput(input: string): string {
+  const trimmed = input.trim();
+
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    return url.hash || trimmed;
+  } catch {
+    return trimmed;
+  }
 }

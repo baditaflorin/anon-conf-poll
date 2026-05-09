@@ -2,26 +2,52 @@ import {
   BarChart3,
   Bug,
   ClipboardList,
+  ClipboardPaste,
   Copy,
   Database,
   Download,
+  FileUp,
   Github,
   Heart,
   KeyRound,
+  Link,
+  Printer,
   Radio,
   RefreshCw,
   Send,
   ShieldCheck,
+  Trash2,
   Wand2,
   Vote,
   Wifi
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { summarizeWithDuckDB, type DuckDbSummary } from "./features/analytics/duckdb";
+import { classifyImport, readTextFiles } from "./features/io/fileRouting";
+import {
+  copyToClipboard,
+  downloadTextFile,
+  printReport,
+  readClipboardText
+} from "./features/io/downloads";
 import { encodeInvite, encodeRoom, inviteBelongsToRoom, roomShareUrl } from "./features/polls/room";
 import { tallyVotes } from "./features/polls/tally";
-import type { Invite, RoomManifest, VerifiedQuestion, VerifiedVote } from "./features/polls/types";
-import { loadRecentRoom, saveRecentRoom } from "./features/storage/localStore";
+import type {
+  Invite,
+  QuestionRecord,
+  RoomManifest,
+  VerifiedQuestion,
+  VerifiedVote,
+  VoteRecord
+} from "./features/polls/types";
+import {
+  createAppStateSnapshot,
+  parseAppStateSnapshot,
+  serializeAppState,
+  type ActivityEvent,
+  type AppStateSnapshot
+} from "./features/state/appState";
+import { clearAppState, loadAppState, saveAppState } from "./features/storage/localStore";
 import { parseInviteInput } from "./features/substance/inviteInput";
 import { inferPolls, type PollPreview } from "./features/substance/pollInference";
 import { buildExportPayload } from "./features/substance/provenance";
@@ -48,7 +74,6 @@ type RoomSeed = {
   roomError?: Extract<SafeRoomResult, { ok: false }>;
 };
 type LoadedRoomSeed = { manifest: RoomManifest; invites: Invite[]; invite: Invite | null };
-type ActivityEvent = { at: string; label: string; detail: string };
 
 function initialRoom(): RoomSeed {
   if (!window.location.hash.includes("room=")) {
@@ -135,11 +160,19 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [rosterPreview, setRosterPreview] = useState<RosterPreview | null>(null);
   const [pollPreview, setPollPreview] = useState<PollPreview | null>(null);
   const [inviteInput, setInviteInput] = useState("");
+  const [urlInput, setUrlInput] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [verifiedVotes, setVerifiedVotes] = useState<VerifiedVote[]>([]);
   const [verifiedQuestions, setVerifiedQuestions] = useState<VerifiedQuestion[]>([]);
   const [localVotedPollIds, setLocalVotedPollIds] = useState<Set<string>>(new Set());
+  const [storageReady, setStorageReady] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [pendingReplay, setPendingReplay] = useState<{
+    roomId: string;
+    votes: VoteRecord[];
+    questions: QuestionRecord[];
+  } | null>(null);
   const [busy, setBusy] = useState<BusyState>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [analytics, setAnalytics] = useState<DuckDbSummary | null>(null);
@@ -150,25 +183,114 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
 
   useEffect(() => {
-    void loadRecentRoom().then((recent) => {
-      if (!recent) {
+    void loadAppState().then((saved) => {
+      if (!saved) {
+        setStorageReady(true);
         return;
       }
 
       if (!window.location.hash.includes("room=")) {
-        setManifest(recent.manifest);
-        setActiveInvite(recent.invite);
-        setRoomTitle(recent.manifest.title);
-        window.history.replaceState(null, "", `#${encodeRoom(recent.manifest)}`);
-      } else if (recent.manifest.roomId === manifest.roomId && !activeInvite) {
-        setActiveInvite(recent.invite);
+        applyStateSnapshot(saved, "Restored saved session", true);
+      } else if (saved.manifest.roomId === manifest.roomId && !activeInvite) {
+        setActiveInvite(saved.activeInvite);
       }
+
+      setStorageReady(true);
     });
   }, []);
 
   useEffect(() => {
-    void saveRecentRoom(manifest, activeInvite);
-  }, [manifest, activeInvite]);
+    if (!storageReady) {
+      return;
+    }
+
+    void saveAppState(createCurrentSnapshot());
+  }, [
+    activeInvite,
+    activity,
+    inviteInput,
+    manifest,
+    organizerInvites,
+    pollInput,
+    questions,
+    rosterInput,
+    selectedOptions,
+    storageReady,
+    votes
+  ]);
+
+  useEffect(() => {
+    if (!pendingReplay || pendingReplay.roomId !== manifest.roomId) {
+      return;
+    }
+
+    for (const vote of pendingReplay.votes) {
+      publishVote(vote);
+    }
+
+    for (const question of pendingReplay.questions) {
+      publishQuestion(question);
+    }
+
+    if (pendingReplay.votes.length > 0 || pendingReplay.questions.length > 0) {
+      recordActivity(
+        "State replayed",
+        `${pendingReplay.votes.length} vote(s), ${pendingReplay.questions.length} question(s)`
+      );
+    }
+
+    setPendingReplay(null);
+  }, [manifest.roomId, pendingReplay, publishQuestion, publishVote]);
+
+  function createCurrentSnapshot(): AppStateSnapshot {
+    return createAppStateSnapshot({
+      manifest,
+      activeInvite,
+      organizerInvites,
+      rosterInput,
+      pollInput,
+      inviteInput,
+      selectedOptions,
+      activity,
+      votes,
+      questions
+    });
+  }
+
+  function applyStateSnapshot(snapshot: AppStateSnapshot, label: string, replaceUrl: boolean) {
+    setManifest(snapshot.manifest);
+    setOrganizerInvites(snapshot.organizerInvites);
+    setActiveInvite(snapshot.activeInvite);
+    setAttendeeCount(snapshot.manifest.attendeeCommitments.length);
+    setRoomTitle(snapshot.manifest.title);
+    setRosterInput(snapshot.rosterInput);
+    setPollInput(snapshot.pollInput);
+    setInviteInput(snapshot.inviteInput);
+    setSelectedOptions(snapshot.selectedOptions);
+    setVerifiedVotes([]);
+    setVerifiedQuestions([]);
+    setLocalVotedPollIds(new Set());
+    setAnalytics(null);
+    setActivity(
+      [
+        {
+          at: new Date().toISOString(),
+          label,
+          detail: `${snapshot.manifest.title} (${snapshot.manifest.roomId})`
+        },
+        ...snapshot.activity
+      ].slice(0, 12)
+    );
+    setPendingReplay({
+      roomId: snapshot.manifest.roomId,
+      votes: snapshot.votes,
+      questions: snapshot.questions
+    });
+
+    if (replaceUrl) {
+      window.history.replaceState(null, "", `#${encodeRoom(snapshot.manifest)}`);
+    }
+  }
 
   useEffect(() => {
     if (!rosterInput.trim()) {
@@ -274,12 +396,18 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   }, [manifest, questions]);
 
   function startNewRoom() {
+    if (busy) {
+      return;
+    }
+
+    const safeAttendeeCount = clampAttendeeCount(attendeeCount);
+    setAttendeeCount(safeAttendeeCount);
     setBusy({ label: "Generating commitments", detail: "Creating local Semaphore identities." });
     void import("./features/proofs/attendees")
       .then(({ createGeneratedRoom }) => {
         const inferredPolls = pollPreview?.polls.filter((poll) => poll.options.length >= 2);
         const generated = createGeneratedRoom(
-          attendeeCount,
+          safeAttendeeCount,
           roomTitle.trim() || "Anonymous Conference Poll",
           inferredPolls && inferredPolls.length > 0 ? inferredPolls : undefined
         );
@@ -290,6 +418,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         setLocalVotedPollIds(new Set());
         setVerifiedVotes([]);
         setVerifiedQuestions([]);
+        setPendingReplay(null);
         setAnalytics(null);
         window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
         recordActivity(
@@ -318,17 +447,21 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   }
 
   async function copyText(value: string, message: string) {
-    await navigator.clipboard.writeText(value);
-    setToast({ tone: "good", message });
+    try {
+      await copyToClipboard(value);
+      setToast({ tone: "good", message });
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    }
   }
 
-  function importInvite() {
-    const parsed = parseInviteInput(inviteInput);
+  function applyInviteText(value: string, sourceLabel: string): boolean {
+    const parsed = parseInviteInput(value);
 
     if (!parsed.ok) {
       setToast({ tone: "bad", message: `${parsed.message} ${parsed.suggestion}` });
       recordActivity("Invite rejected", parsed.message);
-      return;
+      return false;
     }
 
     if (!inviteBelongsToRoom(parsed.invite, manifest)) {
@@ -337,16 +470,147 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         message: "Invite is valid, but it belongs to a different room. Ask for this room's invite."
       });
       recordActivity("Invite rejected", `Different room: ${parsed.roomId}`);
-      return;
+      return false;
     }
 
     setActiveInvite(parsed.invite);
     setInviteInput("");
     recordActivity(
       "Invite loaded",
-      `${parsed.confidence} confidence; ${parsed.normalizations.join(", ") || "raw token"}`
+      `${sourceLabel}; ${parsed.confidence} confidence; ${
+        parsed.normalizations.join(", ") || "raw token"
+      }`
     );
     setToast({ tone: "good", message: "Invite loaded for this browser." });
+    return true;
+  }
+
+  function importInvite() {
+    applyInviteText(inviteInput, "Manual input");
+  }
+
+  async function pasteInviteFromClipboard() {
+    try {
+      const text = await readClipboardText();
+      setInviteInput(text);
+      applyInviteText(text, "Clipboard");
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    }
+  }
+
+  function applyRoomText(value: string, sourceLabel: string): boolean {
+    const decoded = safeDecodeRoomInput(value);
+
+    if (!decoded.ok) {
+      setToast({ tone: "bad", message: `${decoded.message} ${decoded.suggestion}` });
+      recordActivity("Room link rejected", decoded.message);
+      return false;
+    }
+
+    setManifest(decoded.manifest);
+    setOrganizerInvites([]);
+    setActiveInvite(null);
+    setAttendeeCount(decoded.manifest.attendeeCommitments.length);
+    setRoomTitle(decoded.manifest.title);
+    setSelectedOptions({});
+    setLocalVotedPollIds(new Set());
+    setVerifiedVotes([]);
+    setVerifiedQuestions([]);
+    setPendingReplay(null);
+    setAnalytics(null);
+    window.history.replaceState(null, "", `#${encodeRoom(decoded.manifest)}`);
+    recordActivity("Room link loaded", `${sourceLabel}; ${decoded.manifest.roomId}`);
+    setToast({ tone: "good", message: "Room link loaded." });
+    return true;
+  }
+
+  function applyUrlInput() {
+    if (!urlInput.trim()) {
+      setToast({ tone: "warn", message: "Paste a room URL, room hash, or invite link first." });
+      return;
+    }
+
+    const classified = classifyImport({ name: "URL input", type: "text/plain", text: urlInput });
+    applyClassifiedImport(classified);
+  }
+
+  async function handleFileInput(files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    await handleTextFiles(files);
+  }
+
+  async function handleTextFiles(files: FileList | File[]) {
+    try {
+      setBusy({ label: "Importing files", detail: "Reading local text, CSV, and JSON files." });
+      const inputs = await readTextFiles(files);
+
+      for (const input of inputs) {
+        applyClassifiedImport(classifyImport(input));
+      }
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function applyClassifiedImport(input: ReturnType<typeof classifyImport>) {
+    if (input.kind === "state") {
+      const parsed = parseAppStateSnapshot(input.text);
+
+      if (!parsed.ok) {
+        setToast({ tone: "bad", message: `State import failed: ${parsed.message}` });
+        recordActivity("State import rejected", input.name);
+        return;
+      }
+
+      applyStateSnapshot(parsed.state, `Imported state from ${input.name}`, true);
+      setToast({ tone: "good", message: "State file imported." });
+      return;
+    }
+
+    if (input.kind === "room") {
+      applyRoomText(input.text, input.name);
+      return;
+    }
+
+    if (input.kind === "invite") {
+      if (!applyInviteText(input.text, input.name)) {
+        setInviteInput(input.text);
+      }
+      return;
+    }
+
+    if (input.kind === "roster") {
+      setRosterInput(input.text);
+      recordActivity("Roster file loaded", input.name);
+      setToast({ tone: "good", message: "Roster file loaded." });
+      return;
+    }
+
+    if (input.kind === "poll") {
+      setPollInput(input.text);
+      recordActivity("Poll file loaded", input.name);
+      setToast({ tone: "good", message: "Poll file loaded." });
+      return;
+    }
+
+    setToast({
+      tone: "warn",
+      message: `${input.name} was not recognized. Use CSV roster, poll text/CSV, invite code, room URL, or state JSON.`
+    });
+    recordActivity("Import skipped", `${input.name}: unrecognized`);
+  }
+
+  function loadSampleInputs() {
+    setRosterInput(sampleRosterCsv);
+    setPollInput(samplePollDraft);
+    recordActivity("Sample data loaded", "Roster and poll draft examples");
+    setToast({ tone: "good", message: "Sample roster and poll draft loaded." });
   }
 
   async function castVote(pollId: string) {
@@ -454,7 +718,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     }
   }
 
-  function downloadResults(kind: "json" | "csv") {
+  function resultsJsonText(): string {
     const exportPayload = buildExportPayload({
       manifest,
       votes: verifiedVotes,
@@ -462,15 +726,65 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       rosterPreview,
       pollPreview
     });
-    const payload = kind === "json" ? JSON.stringify(exportPayload, null, 2) : toCsv(verifiedVotes);
-    const blob = new Blob([payload], { type: kind === "json" ? "application/json" : "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${manifest.roomId}-results.${kind}`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    recordActivity("Results exported", `${kind.toUpperCase()} with provenance metadata`);
+
+    return `${JSON.stringify(exportPayload, null, 2)}\n`;
+  }
+
+  function stateJsonText(): string {
+    return serializeAppState(createCurrentSnapshot());
+  }
+
+  function downloadResults(kind: "json" | "csv") {
+    const payload = kind === "json" ? resultsJsonText() : toCsv(verifiedVotes);
+    downloadTextFile(
+      `${manifest.roomId}-${kind === "json" ? "results" : "votes"}.${kind}`,
+      payload,
+      kind === "json" ? "application/json" : "text/csv"
+    );
+    recordActivity(
+      "Results exported",
+      kind === "json" ? "JSON with provenance metadata" : "Vote CSV rows"
+    );
+  }
+
+  function downloadState() {
+    downloadTextFile(`${manifest.roomId}-state.json`, stateJsonText(), "application/json");
+    recordActivity("State exported", "Versioned setup state JSON");
+  }
+
+  async function copyResults(kind: "json" | "csv") {
+    await copyText(
+      kind === "json" ? resultsJsonText() : toCsv(verifiedVotes),
+      kind === "json" ? "Results JSON copied." : "Vote CSV copied."
+    );
+    recordActivity("Results copied", kind === "json" ? "JSON" : "Vote CSV");
+  }
+
+  async function copyState() {
+    await copyText(stateJsonText(), "State JSON copied.");
+    recordActivity("State copied", "Versioned setup state JSON");
+  }
+
+  async function startFresh() {
+    await clearAppState();
+    const generated = await createDefaultRoom();
+    setManifest(generated.manifest);
+    setOrganizerInvites(generated.invites);
+    setActiveInvite(generated.invite);
+    setAttendeeCount(generated.manifest.attendeeCommitments.length);
+    setRoomTitle(generated.manifest.title);
+    setRosterInput("");
+    setPollInput("");
+    setInviteInput("");
+    setUrlInput("");
+    setSelectedOptions({});
+    setVerifiedVotes([]);
+    setVerifiedQuestions([]);
+    setLocalVotedPollIds(new Set());
+    setPendingReplay(null);
+    setAnalytics(null);
+    setActivity([]);
+    setToast({ tone: "good", message: "Fresh room created and saved state cleared." });
   }
 
   const currentInviteCode = activeInvite ? encodeInvite(activeInvite) : "";
@@ -528,7 +842,20 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       ) : null}
 
       <div className="workspace">
-        <section className="panel controls-panel" aria-labelledby="room-controls">
+        <section
+          className={`panel controls-panel ${isDraggingFile ? "dragging-file" : ""}`}
+          aria-labelledby="room-controls"
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDraggingFile(true);
+          }}
+          onDragLeave={() => setIsDraggingFile(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDraggingFile(false);
+            void handleTextFiles(event.dataTransfer.files);
+          }}
+        >
           <div className="panel-heading">
             <h2 id="room-controls">Room Control</h2>
             <button
@@ -540,6 +867,54 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               <Copy size={18} aria-hidden="true" />
             </button>
           </div>
+
+          <div className="file-drop">
+            <FileUp size={18} aria-hidden="true" />
+            <div>
+              <strong>Import files</strong>
+              <p>
+                Drop or choose CSV, TXT, or JSON for rosters, polls, invites, room links, or saved
+                state.
+              </p>
+            </div>
+            <label className="file-picker">
+              Choose
+              <input
+                aria-label="Import files"
+                type="file"
+                accept=".csv,.txt,.json,text/csv,text/plain,application/json"
+                multiple
+                onChange={(event) => {
+                  void handleFileInput(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="button-row">
+            <button type="button" onClick={loadSampleInputs}>
+              <ClipboardList size={18} aria-hidden="true" />
+              Sample data
+            </button>
+            <button type="button" onClick={() => void startFresh()}>
+              <Trash2 size={18} aria-hidden="true" />
+              Start fresh
+            </button>
+          </div>
+
+          <label>
+            <span>Room or invite URL</span>
+            <input
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              placeholder="Paste room URL, #room=..., or invite link"
+            />
+          </label>
+          <button type="button" onClick={applyUrlInput}>
+            <Link size={18} aria-hidden="true" />
+            Open link
+          </button>
 
           <label>
             <span>Title</span>
@@ -553,6 +928,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               max={256}
               value={attendeeCount}
               onChange={(event) => setAttendeeCount(Number(event.target.value))}
+              onBlur={() => setAttendeeCount(clampAttendeeCount(attendeeCount))}
             />
           </label>
           <label>
@@ -591,7 +967,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
             />
           ) : null}
-          <button type="button" className="primary" onClick={startNewRoom}>
+          <button type="button" className="primary" disabled={Boolean(busy)} onClick={startNewRoom}>
             <RefreshCw size={18} aria-hidden="true" />
             New room
           </button>
@@ -610,6 +986,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               <KeyRound size={18} aria-hidden="true" />
               Load
             </button>
+            <button type="button" onClick={() => void pasteInviteFromClipboard()}>
+              <ClipboardPaste size={18} aria-hidden="true" />
+              Paste
+            </button>
             <button
               type="button"
               disabled={!currentInviteCode}
@@ -624,9 +1004,9 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             <button
               type="button"
               onClick={() =>
-                downloadBlob(
+                downloadTextFile(
                   `${manifest.roomId}-invites.json`,
-                  JSON.stringify(organizerInvites.map(encodeInvite), null, 2),
+                  `${JSON.stringify(organizerInvites.map(encodeInvite), null, 2)}\n`,
                   "application/json"
                 )
               }
@@ -680,7 +1060,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                 <button
                   type="button"
                   className="primary"
-                  disabled={alreadyVoted}
+                  disabled={alreadyVoted || Boolean(busy)}
                   onClick={() => void castVote(poll.id)}
                 >
                   <Vote size={18} aria-hidden="true" />
@@ -702,7 +1082,12 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             placeholder="Ask a question"
             rows={3}
           />
-          <button type="button" className="primary" onClick={() => void submitQuestion()}>
+          <button
+            type="button"
+            className="primary"
+            disabled={Boolean(busy)}
+            onClick={() => void submitQuestion()}
+          >
             <Send size={18} aria-hidden="true" />
             Submit
           </button>
@@ -728,11 +1113,31 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           <div className="button-row">
             <button type="button" onClick={() => downloadResults("json")}>
               <Download size={18} aria-hidden="true" />
-              JSON
+              Download JSON
+            </button>
+            <button type="button" onClick={() => void copyResults("json")}>
+              <Copy size={18} aria-hidden="true" />
+              Copy JSON
             </button>
             <button type="button" onClick={() => downloadResults("csv")}>
               <Download size={18} aria-hidden="true" />
-              CSV
+              Download votes CSV
+            </button>
+            <button type="button" onClick={() => void copyResults("csv")}>
+              <Copy size={18} aria-hidden="true" />
+              Copy votes CSV
+            </button>
+            <button type="button" onClick={downloadState}>
+              <Download size={18} aria-hidden="true" />
+              Download state
+            </button>
+            <button type="button" onClick={() => void copyState()}>
+              <Copy size={18} aria-hidden="true" />
+              Copy state
+            </button>
+            <button type="button" onClick={printReport}>
+              <Printer size={18} aria-hidden="true" />
+              Print
             </button>
           </div>
           {analytics ? (
@@ -909,15 +1314,30 @@ function toCsv(votes: VerifiedVote[]): string {
       .join(",")
   );
 
-  return [header, ...rows].join("\n");
+  return `${[header, ...rows].join("\n")}\n`;
 }
 
-function downloadBlob(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+function clampAttendeeCount(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 24;
+  }
+
+  return Math.min(256, Math.max(4, Math.trunc(value)));
 }
+
+const sampleRosterCsv = `First Name,Last Name,Email,Approval Status
+Ada,Lovelace,ada@example.com,approved
+Grace,Hopper,grace@example.com,approved
+Katherine,Johnson,katherine@example.com,pending
+Grace,Hopper,grace@example.com,approved`;
+
+const samplePollDraft = `Opening poll: What should this session optimize for?
+- Practical demos
+- Architecture depth
+- Security review
+- Open Q&A
+
+Closing poll: What should we improve next time?
+- Shorter talks
+- More Q&A
+- Deeper examples`;

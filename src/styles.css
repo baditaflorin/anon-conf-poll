@@ -290,6 +290,52 @@ textarea {
   flex-wrap: wrap;
 }
 
+.file-drop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: 12px;
+}
+
+.controls-panel.dragging-file .file-drop {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.file-drop strong,
+.file-drop p {
+  margin: 0;
+}
+
+.file-drop p {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.file-picker {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .poll-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -487,5 +533,44 @@ textarea {
 
   .option meter {
     grid-column: 2 / -1;
+  }
+
+  .file-drop {
+    grid-template-columns: auto 1fr;
+  }
+
+  .file-picker {
+    grid-column: 1 / -1;
+  }
+}
+
+@media print {
+  .topbar,
+  .status-strip,
+  .controls-panel,
+  .qa-panel textarea,
+  .qa-panel button,
+  .analytics-panel .button-row,
+  .toast,
+  .busy,
+  .debug-panel {
+    display: none !important;
+  }
+
+  body,
+  main {
+    background: white !important;
+  }
+
+  .workspace {
+    display: block;
+    padding: 0;
+  }
+
+  .poll-card,
+  .panel {
+    box-shadow: none;
+    break-inside: avoid;
+    margin-bottom: 12px;
   }
 }
