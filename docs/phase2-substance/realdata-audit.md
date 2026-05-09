@@ -69,3 +69,11 @@ For `anon-conf-poll`, "smart" means:
 - No moderation, admin roles, payments, or analytics tracking.
 - No Phase 3 scale architecture such as owned TURN/signaling relays.
 - No change to the core cryptographic protocol unless an ADR later shows a fixture-driven correctness issue.
+
+## Pass-Rate Trend
+
+| Checkpoint                 | Pass rate | Notes                                                                                                                   |
+| -------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| v0.1.0 happy-path baseline | 2/10      | Clean generated room and local DuckDB worked; messy invites, real rosters, poll drafts, and bad links failed.           |
+| Phase 2 fixture gate       | 9/10      | Real-data parsers, safe room decoding, deterministic inference, confidence summaries, and duplicate wording are tested. |
+| Remaining partial after P2 | 1/10      | Cross-device duplicate prevention is honest in wording and export state, but still depends on mesh sync timing.         |
