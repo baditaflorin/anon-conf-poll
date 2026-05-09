@@ -60,9 +60,11 @@ import {
   DEFAULT_ICE_SERVERS,
   loadIceServers,
   loadSignalingUrl,
+  loadTurnTokenUrl,
   resetIceServers,
   saveIceServers,
   saveSignalingUrl,
+  saveTurnTokenUrl,
   type IceServer
 } from "./features/sync/iceConfig";
 import { appConfig } from "./shared/config";
@@ -192,6 +194,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [showConnection, setShowConnection] = useState(false);
   const [iceServers, setIceServers] = useState<IceServer[]>(() => loadIceServers());
   const [signalingInput, setSignalingInput] = useState(() => loadSignalingUrl());
+  const [turnTokenInput, setTurnTokenInput] = useState(() => loadTurnTokenUrl());
   const [turnUrl, setTurnUrl] = useState("");
   const [turnUsername, setTurnUsername] = useState("");
   const [turnCredential, setTurnCredential] = useState("");
@@ -1071,6 +1074,29 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
           {showConnection ? (
             <div className="connection-settings">
+              <label>
+                <span>TURN token server</span>
+                <input
+                  value={turnTokenInput}
+                  onChange={(e) => setTurnTokenInput(e.target.value)}
+                  placeholder="https://turn.yourdomain.com/credentials"
+                />
+              </label>
+              <p className="connection-note">
+                Fetches time-limited HMAC credentials on each connect. Leave empty to use the ICE servers below.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  saveTurnTokenUrl(turnTokenInput);
+                  setToast({ tone: "good", message: "Token server saved. Reload to apply." });
+                }}
+              >
+                Save token server
+              </button>
+
+              <div className="divider" />
+
               <label>
                 <span>Signaling server</span>
                 <input

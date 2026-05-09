@@ -1,20 +1,42 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { QuestionRecord, RoomManifest, VoteRecord } from "../polls/types";
-import { createRoomSync } from "./yjsRoom";
+import { maybeFetchTurnCredentials } from "./iceConfig";
+import { createRoomSync, type RoomSync } from "./yjsRoom";
 
 export type SyncStatus = "offline" | "connecting" | "connected";
 
 export function useSyncedRoom(manifest: RoomManifest) {
-  const sync = useMemo(() => createRoomSync(manifest), [manifest]);
+  const [sync, setSync] = useState<RoomSync | null>(null);
   const [votes, setVotes] = useState<VoteRecord[]>([]);
   const [questions, setQuestions] = useState<QuestionRecord[]>([]);
-  const [status, setStatus] = useState<SyncStatus>(sync.provider ? "connecting" : "offline");
+  const [status, setStatus] = useState<SyncStatus>("connecting");
   const [peers, setPeers] = useState(0);
 
+  // Step 1: fetch fresh HMAC credentials from the token server (if configured),
+  // then create the WebrtcProvider with the up-to-date ICE server list.
   useEffect(() => {
-    const updateVotes = () => setVotes(Array.from(sync.votes.values()));
+    let cancelled = false;
+
+    void maybeFetchTurnCredentials().then(() => {
+      if (cancelled) return;
+      setSync(createRoomSync(manifest));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest]);
+
+  // Step 2: wire up Yjs observers once the sync object is ready.
+  useEffect(() => {
+    if (!sync) return;
+
+    setStatus(sync.provider ? "connecting" : "offline");
+    setPeers(sync.provider?.awareness.getStates().size ?? 1);
+
+    const updateVotes     = () => setVotes(Array.from(sync.votes.values()));
     const updateQuestions = () => setQuestions(Array.from(sync.questions.values()));
-    const updatePeers = () => setPeers(sync.provider?.awareness.getStates().size ?? 1);
+    const updatePeers     = () => setPeers(sync.provider?.awareness.getStates().size ?? 1);
 
     sync.votes.observe(updateVotes);
     sync.questions.observe(updateQuestions);
@@ -25,7 +47,6 @@ export function useSyncedRoom(manifest: RoomManifest) {
 
     updateVotes();
     updateQuestions();
-    updatePeers();
 
     return () => {
       sync.votes.unobserve(updateVotes);
@@ -42,10 +63,10 @@ export function useSyncedRoom(manifest: RoomManifest) {
     status,
     peers,
     publishVote(vote: VoteRecord) {
-      sync.votes.set(vote.id, vote);
+      sync?.votes.set(vote.id, vote);
     },
     publishQuestion(question: QuestionRecord) {
-      sync.questions.set(question.id, question);
-    }
+      sync?.questions.set(question.id, question);
+    },
   };
 }
