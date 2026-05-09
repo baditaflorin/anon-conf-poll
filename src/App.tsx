@@ -15,11 +15,13 @@ import {
   Radio,
   RefreshCw,
   Send,
+  Settings,
   ShieldCheck,
   Trash2,
   Wand2,
   Vote,
-  Wifi
+  Wifi,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { summarizeWithDuckDB, type DuckDbSummary } from "./features/analytics/duckdb";
@@ -54,6 +56,15 @@ import { buildExportPayload } from "./features/substance/provenance";
 import { inferRoster, type RosterPreview } from "./features/substance/rosterInference";
 import { safeDecodeRoomInput, type SafeRoomResult } from "./features/substance/roomLink";
 import { useSyncedRoom } from "./features/sync/useSyncedRoom";
+import {
+  DEFAULT_ICE_SERVERS,
+  loadIceServers,
+  loadSignalingUrl,
+  resetIceServers,
+  saveIceServers,
+  saveSignalingUrl,
+  type IceServer
+} from "./features/sync/iceConfig";
 import { appConfig } from "./shared/config";
 import { sanitizeError } from "./shared/logger";
 
@@ -177,6 +188,12 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [toast, setToast] = useState<Toast>(null);
   const [analytics, setAnalytics] = useState<DuckDbSummary | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [showConnection, setShowConnection] = useState(false);
+  const [iceServers, setIceServers] = useState<IceServer[]>(() => loadIceServers());
+  const [signalingInput, setSignalingInput] = useState(() => loadSignalingUrl());
+  const [turnUrl, setTurnUrl] = useState("");
+  const [turnUsername, setTurnUsername] = useState("");
+  const [turnCredential, setTurnCredential] = useState("");
   const { votes, questions, status, peers, publishVote, publishQuestion } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
@@ -1014,6 +1031,124 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               <Download size={18} aria-hidden="true" />
               Invite roster
             </button>
+          ) : null}
+
+          <div className="divider" />
+
+          <div className="panel-heading">
+            <h3>Connection</h3>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setShowConnection((v) => !v)}
+              title="Toggle connection settings"
+            >
+              <Settings size={18} aria-hidden="true" />
+            </button>
+          </div>
+
+          {showConnection ? (
+            <div className="connection-settings">
+              <label>
+                <span>Signaling server</span>
+                <input
+                  value={signalingInput}
+                  onChange={(e) => setSignalingInput(e.target.value)}
+                  placeholder={appConfig.signalingUrl}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  saveSignalingUrl(signalingInput);
+                  setToast({ tone: "good", message: "Signaling URL saved. Reload to apply." });
+                }}
+              >
+                Save signaling
+              </button>
+
+              <div className="divider" />
+
+              <h4>ICE servers</h4>
+              <ul className="ice-server-list">
+                {iceServers.map((srv, i) => (
+                  <li key={i}>
+                    <span className="ice-url">{srv.urls}</span>
+                    {srv.username ? <span className="ice-meta"> · {srv.username}</span> : null}
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Remove"
+                      onClick={() => {
+                        const next = iceServers.filter((_, j) => j !== i);
+                        setIceServers(next);
+                        saveIceServers(next);
+                        setToast({ tone: "good", message: "ICE server removed. Reload to apply." });
+                      }}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <label>
+                <span>TURN / STUN URL</span>
+                <input
+                  value={turnUrl}
+                  onChange={(e) => setTurnUrl(e.target.value)}
+                  placeholder="turn:your-server.example.com:3478"
+                />
+              </label>
+              <label>
+                <span>Username</span>
+                <input
+                  value={turnUsername}
+                  onChange={(e) => setTurnUsername(e.target.value)}
+                  placeholder="optional"
+                />
+              </label>
+              <label>
+                <span>Credential</span>
+                <input
+                  type="password"
+                  value={turnCredential}
+                  onChange={(e) => setTurnCredential(e.target.value)}
+                  placeholder="optional"
+                />
+              </label>
+              <div className="button-row">
+                <button
+                  type="button"
+                  disabled={!turnUrl.trim()}
+                  onClick={() => {
+                    const entry: IceServer = { urls: turnUrl.trim() };
+                    if (turnUsername.trim()) entry.username = turnUsername.trim();
+                    if (turnCredential.trim()) entry.credential = turnCredential.trim();
+                    const next = [...iceServers, entry];
+                    setIceServers(next);
+                    saveIceServers(next);
+                    setTurnUrl("");
+                    setTurnUsername("");
+                    setTurnCredential("");
+                    setToast({ tone: "good", message: "ICE server added. Reload to apply." });
+                  }}
+                >
+                  Add server
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetIceServers();
+                    setIceServers(DEFAULT_ICE_SERVERS);
+                    setToast({ tone: "good", message: "Reset to Google STUN defaults. Reload to apply." });
+                  }}
+                >
+                  Reset defaults
+                </button>
+              </div>
+              <p className="connection-note">Changes apply after reload or starting a new room.</p>
+            </div>
           ) : null}
         </section>
 
