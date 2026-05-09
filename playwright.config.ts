@@ -9,7 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:4175/anon-conf-poll/",
+    baseURL: "http://127.0.0.1:43175/anon-conf-poll/",
     trace: "retain-on-failure"
   },
   projects: [
@@ -19,9 +19,9 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: "npx vite preview --host 127.0.0.1 --port 4175 --strictPort",
-    url: "http://127.0.0.1:4175/anon-conf-poll/",
-    reuseExistingServer: !process.env.CI,
+    command: "npx vite preview --host 127.0.0.1 --port 43175 --strictPort",
+    url: "http://127.0.0.1:43175/anon-conf-poll/",
+    reuseExistingServer: false,
     timeout: 20_000
   }
 });
