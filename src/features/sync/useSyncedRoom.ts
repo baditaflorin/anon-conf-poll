@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { IceServer } from "./iceConfig";
 import type { QuestionRecord, RoomManifest, VoteRecord } from "../polls/types";
 import { maybeFetchTurnCredentials } from "./iceConfig";
@@ -6,8 +6,20 @@ import { createRoomSync, type RoomSync } from "./yjsRoom";
 
 export type SyncStatus = "offline" | "connecting" | "connected";
 
+type SignalingConnLike = {
+  connected: boolean;
+  send: (m: unknown) => void;
+};
+
+type RoomLike = {
+  roomName: string;
+  peerId: string;
+  webrtcConns: Map<string, unknown>;
+};
+
 export function useSyncedRoom(manifest: RoomManifest) {
   const [sync, setSync] = useState<RoomSync | null>(null);
+  const syncRef = useRef<RoomSync | null>(null);
   const [votes, setVotes] = useState<VoteRecord[]>([]);
   const [questions, setQuestions] = useState<QuestionRecord[]>([]);
   const [status, setStatus] = useState<SyncStatus>("connecting");
@@ -18,6 +30,7 @@ export function useSyncedRoom(manifest: RoomManifest) {
   // Debug counters visible in the UI without DevTools
   const [announcedPeers, setAnnouncedPeers] = useState(0);    // peers seen via signaling
   const [webrtcPeers, setWebrtcPeers] = useState(0);           // peers with an active WebRTC conn
+  const [reannounceCount, setReannounceCount] = useState(0);   // how many times we've re-announced
 
   // Step 1: fetch fresh HMAC credentials from the token server (if configured),
   // then create the WebrtcProvider with the up-to-date ICE server list.
@@ -27,6 +40,7 @@ export function useSyncedRoom(manifest: RoomManifest) {
     void maybeFetchTurnCredentials().then(() => {
       if (cancelled) return;
       const s = createRoomSync(manifest);
+      syncRef.current = s;
       setSync(s);
       setSignalingUrl(s.signalingUrl);
       setActiveIceServers(s.iceServers);
@@ -79,8 +93,38 @@ export function useSyncedRoom(manifest: RoomManifest) {
       sync.provider?.awareness.off("change", updatePeers);
       sync.provider?.destroy();
       sync.doc.destroy();
+      syncRef.current = null;
     };
   }, [sync]);
+
+  /** Manually send a fresh announce to all connected signaling servers. */
+  const forceReannounce = useCallback(() => {
+    const s = syncRef.current;
+    if (!s?.provider) return;
+    const prov = s.provider as unknown as {
+      room?: RoomLike;
+      signalingConns?: SignalingConnLike[];
+    };
+    const room = prov.room;
+    const sigConns = prov.signalingConns ?? [];
+    if (!room) {
+      console.warn("[sync] forceReannounce: room not ready");
+      return;
+    }
+    let sent = 0;
+    sigConns.forEach(conn => {
+      if (conn.connected) {
+        conn.send({
+          type: "publish",
+          topic: room.roomName,
+          data: { type: "announce", from: room.peerId },
+        });
+        sent++;
+      }
+    });
+    console.info(`[sync] forceReannounce: sent to ${sent} signaling conn(s)`);
+    setReannounceCount(prev => prev + 1);
+  }, []);
 
   return {
     votes,
@@ -91,6 +135,8 @@ export function useSyncedRoom(manifest: RoomManifest) {
     activeIceServers,
     announcedPeers,
     webrtcPeers,
+    reannounceCount,
+    forceReannounce,
     publishVote(vote: VoteRecord) {
       sync?.votes.set(vote.id, vote);
     },

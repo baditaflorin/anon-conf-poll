@@ -198,7 +198,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [turnUrl, setTurnUrl] = useState("");
   const [turnUsername, setTurnUsername] = useState("");
   const [turnCredential, setTurnCredential] = useState("");
-  const { votes, questions, status, peers, signalingUrl, activeIceServers, announcedPeers, webrtcPeers, publishVote, publishQuestion } = useSyncedRoom(manifest);
+  const { votes, questions, status, peers, signalingUrl, activeIceServers, announcedPeers, webrtcPeers, reannounceCount, forceReannounce, publishVote, publishQuestion } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
@@ -857,11 +857,21 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
           />
         )}
-        <Status
-          icon={<Radio size={18} />}
-          label="Peers"
-          value={`seen ${announcedPeers} · rtc ${webrtcPeers}`}
-        />
+        <button
+          className="status"
+          title="Click to re-announce to signaling server and force peer discovery"
+          onClick={forceReannounce}
+          style={{ cursor: "pointer", background: "none", border: "none", padding: 0, textAlign: "left" }}
+        >
+          <Radio size={18} aria-hidden="true" />
+          <div>
+            <span className="status-label">Peers</span>
+            <span className="status-value">
+              seen {announcedPeers} · rtc {webrtcPeers}
+              {reannounceCount > 0 ? ` · re✓${reannounceCount}` : " · tap↺"}
+            </span>
+          </div>
+        </button>
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"
