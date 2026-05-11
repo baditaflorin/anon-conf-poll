@@ -1,6 +1,6 @@
 {
   "name": "anon-conf-poll",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Static, anonymous live polling with CRDT sync, zk one-vote proofs, and local analytics.",
   "type": "module",
   "private": false,
