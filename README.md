@@ -46,11 +46,11 @@ More detail lives in `docs/architecture.md`, `docs/adr/`, and `docs/mesh-archite
 
 The browser app is the only thing GitHub Pages serves. The runtime mesh needs three small infrastructure pieces, each in its own repo, each independently deployable, each documented from zero on a fresh VPS:
 
-| Repo | Role | Endpoint the app uses |
-|---|---|---|
-| [signaling-server](https://github.com/baditaflorin/signaling-server) | y-webrtc WebSocket signaling | `wss://YOUR_HOST/ws` |
-| [turn-token-server](https://github.com/baditaflorin/turn-token-server) | Issues short-lived HMAC TURN credentials | `https://YOUR_HOST/credentials` |
-| [coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner) | TURN relay for cross-NAT WebRTC | `turn:YOUR_HOST:3478` (used directly by the browser, not via nginx) |
+| Repo                                                                   | Role                                     | Endpoint the app uses                                               |
+| ---------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
+| [signaling-server](https://github.com/baditaflorin/signaling-server)   | y-webrtc WebSocket signaling             | `wss://YOUR_HOST/ws`                                                |
+| [turn-token-server](https://github.com/baditaflorin/turn-token-server) | Issues short-lived HMAC TURN credentials | `https://YOUR_HOST/credentials`                                     |
+| [coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner)       | TURN relay for cross-NAT WebRTC          | `turn:YOUR_HOST:3478` (used directly by the browser, not via nginx) |
 
 All three include health endpoints, Prometheus metrics, nginx example configs, and bootstrap scripts. The total cost of running all three on the same Hetzner CX22 is ~4 €/month.
 

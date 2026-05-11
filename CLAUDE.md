@@ -5,6 +5,7 @@ Short briefing for future Claude sessions working on this repo. Read this before
 ## What this app is
 
 A GitHub-Pages-hosted SPA for anonymous live polling. Two parts:
+
 - **Frontend** (`src/`) — React + Yjs CRDT + Semaphore zero-knowledge proofs + y-webrtc for transport.
 - **Self-hosted infra** on `turn.0docker.com` (Hetzner box) — three Docker services: signaling, TURN credential issuer, coturn TURN relay. Sources live in `/opt/turn/{signaling,turn-token-server,coturn-hetzner}/` on the server.
 
@@ -17,9 +18,9 @@ See `docs/mesh-architecture.md` for the full data flow.
 In `/opt/turn/signaling/server.js`, when re-broadcasting a `publish` message, **send a string, not a Buffer**:
 
 ```js
-const text = typeof raw === 'string' ? raw : raw.toString('utf8');
-peer.send(text);   // ✅ text frame, browser JSON.parses it
-peer.send(raw);    // ❌ binary frame, browser silently drops it
+const text = typeof raw === "string" ? raw : raw.toString("utf8");
+peer.send(text); // ✅ text frame, browser JSON.parses it
+peer.send(raw); // ❌ binary frame, browser silently drops it
 ```
 
 This bug looked exactly like "WebRTC fails to connect across NATs" — the announce delivers (server logs `delivered=1`), but the receiver never generates an SDP offer because y-webrtc's `switch(m.type)` falls through silently on a Blob.

@@ -11,23 +11,39 @@ export type TurnCredential = {
   uris: string[];
 };
 
-const ICE_KEY       = "anon-conf-poll:iceServers";
+const ICE_KEY = "anon-conf-poll:iceServers";
 const SIGNALING_KEY = "anon-conf-poll:signalingUrl";
 const TOKEN_URL_KEY = "anon-conf-poll:turnTokenUrl";
 
 const STUN_SERVERS: IceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" }
 ];
 
 // Fallback used only when no token server is configured and nothing is saved.
 // openrelay.metered.ca is a free public relay — fine for testing, not production.
 export const DEFAULT_ICE_SERVERS: IceServer[] = [
   ...STUN_SERVERS,
-  { urls: "turn:openrelay.metered.ca:80",                  username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:80?transport=tcp",    username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turns:openrelay.metered.ca:443",                username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turns:openrelay.metered.ca:443?transport=tcp",  username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  },
+  {
+    urls: "turn:openrelay.metered.ca:80?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  },
+  {
+    urls: "turns:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  },
+  {
+    urls: "turns:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject"
+  }
 ];
 
 const STUN_ONLY_FINGERPRINT = JSON.stringify(STUN_SERVERS);
@@ -41,7 +57,10 @@ export function loadIceServers(): IceServer[] {
       const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed) && parsed.length > 0) return parsed as IceServer[];
     }
-  } catch {}
+  } catch {
+    // localStorage may be unavailable (private mode, SecurityError).
+    // Returning the defaults keeps the app usable.
+  }
   return DEFAULT_ICE_SERVERS;
 }
 
@@ -57,10 +76,7 @@ export function resetIceServers(): void {
 
 // Signaling servers known to be dead — clear them from localStorage so the
 // build-time default (our self-hosted server) is used instead.
-const DEAD_SIGNALING_SERVERS = [
-  "wss://signaling.yjs.dev",
-  "ws://signaling.yjs.dev",
-];
+const DEAD_SIGNALING_SERVERS = ["wss://signaling.yjs.dev", "ws://signaling.yjs.dev"];
 
 export function loadSignalingUrl(): string {
   const stored = localStorage.getItem(SIGNALING_KEY) ?? "";
@@ -87,7 +103,7 @@ export function saveSignalingUrl(url: string): void {
 export function loadTurnTokenUrl(): string {
   return (
     localStorage.getItem(TOKEN_URL_KEY) ??
-    (import.meta.env.VITE_TURN_TOKEN_URL as string | undefined) ??
+    import.meta.env.VITE_TURN_TOKEN_URL ??
     "https://turn.0docker.com/credentials"
   );
 }
@@ -124,8 +140,8 @@ export async function maybeFetchTurnCredentials(): Promise<void> {
       ...cred.uris.map((u) => ({
         urls: u,
         username: cred.username,
-        credential: cred.password,
-      })),
+        credential: cred.password
+      }))
     ]);
   } catch (err) {
     console.warn("[turn-token] credential fetch failed — using cached ICE servers:", err);

@@ -28,9 +28,9 @@ export function useSyncedRoom(manifest: RoomManifest) {
   const [activeIceServers, setActiveIceServers] = useState<IceServer[]>([]);
 
   // Debug counters visible in the UI without DevTools
-  const [announcedPeers, setAnnouncedPeers] = useState(0);    // peers seen via signaling
-  const [webrtcPeers, setWebrtcPeers] = useState(0);           // peers with an active WebRTC conn
-  const [reannounceCount, setReannounceCount] = useState(0);   // how many times we've re-announced
+  const [announcedPeers, setAnnouncedPeers] = useState(0); // peers seen via signaling
+  const [webrtcPeers, setWebrtcPeers] = useState(0); // peers with an active WebRTC conn
+  const [reannounceCount, setReannounceCount] = useState(0); // how many times we've re-announced
 
   // Step 1: fetch fresh HMAC credentials from the token server (if configured),
   // then create the WebrtcProvider with the up-to-date ICE server list.
@@ -58,9 +58,9 @@ export function useSyncedRoom(manifest: RoomManifest) {
     setStatus(sync.provider ? "connecting" : "offline");
     setPeers(sync.provider?.awareness.getStates().size ?? 1);
 
-    const updateVotes     = () => setVotes(Array.from(sync.votes.values()));
+    const updateVotes = () => setVotes(Array.from(sync.votes.values()));
     const updateQuestions = () => setQuestions(Array.from(sync.questions.values()));
-    const updatePeers     = () => setPeers(sync.provider?.awareness.getStates().size ?? 1);
+    const updatePeers = () => setPeers(sync.provider?.awareness.getStates().size ?? 1);
 
     sync.votes.observe(updateVotes);
     sync.questions.observe(updateQuestions);
@@ -80,7 +80,7 @@ export function useSyncedRoom(manifest: RoomManifest) {
         webrtcPeers: string[];
         bcPeers: string[];
       };
-      setAnnouncedPeers(prev => prev + ev.added.length - ev.removed.length);
+      setAnnouncedPeers((prev) => prev + ev.added.length - ev.removed.length);
       setWebrtcPeers(ev.webrtcPeers.length);
     });
 
@@ -112,18 +112,18 @@ export function useSyncedRoom(manifest: RoomManifest) {
       return;
     }
     let sent = 0;
-    sigConns.forEach(conn => {
+    sigConns.forEach((conn) => {
       if (conn.connected) {
         conn.send({
           type: "publish",
           topic: room.roomName,
-          data: { type: "announce", from: room.peerId },
+          data: { type: "announce", from: room.peerId }
         });
         sent++;
       }
     });
     console.info(`[sync] forceReannounce: sent to ${sent} signaling conn(s)`);
-    setReannounceCount(prev => prev + 1);
+    setReannounceCount((prev) => prev + 1);
   }, []);
 
   return {
@@ -142,6 +142,6 @@ export function useSyncedRoom(manifest: RoomManifest) {
     },
     publishQuestion(question: QuestionRecord) {
       sync?.questions.set(question.id, question);
-    },
+    }
   };
 }

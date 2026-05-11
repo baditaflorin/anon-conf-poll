@@ -122,7 +122,11 @@ export function roomShareUrl(manifest: RoomManifest, href = currentHref()): stri
   return url.toString();
 }
 
-export function attendeeShareUrl(manifest: RoomManifest, invite: Invite, href = currentHref()): string {
+export function attendeeShareUrl(
+  manifest: RoomManifest,
+  invite: Invite,
+  href = currentHref()
+): string {
   const url = new URL(href);
   url.hash = `${encodeRoom(manifest)}&invite=${encodeInvite(invite)}`;
   return url.toString();

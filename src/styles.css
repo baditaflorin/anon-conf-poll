@@ -50,7 +50,9 @@ button,
   font-size: 0.9rem;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 
 button:hover:not(:disabled),
@@ -180,7 +182,9 @@ button.ghost:hover {
   user-select: none;
 }
 
-.diagnostics > summary::-webkit-details-marker { display: none; }
+.diagnostics > summary::-webkit-details-marker {
+  display: none;
+}
 .diagnostics > summary::before {
   content: "▸";
   display: inline-block;
@@ -188,8 +192,13 @@ button.ghost:hover {
   margin-right: 4px;
   font-size: 0.9em;
 }
-.diagnostics[open] > summary::before { transform: rotate(90deg); }
-.diagnostics > summary:hover { color: var(--text); border-color: var(--text); }
+.diagnostics[open] > summary::before {
+  transform: rotate(90deg);
+}
+.diagnostics > summary:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
 
 .diagnostics-summary-value {
   font-variant-numeric: tabular-nums;
@@ -335,7 +344,9 @@ button.ghost:hover {
   background: var(--surface);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.05s;
+  transition:
+    border-color 0.15s,
+    transform 0.05s;
   font: inherit;
   color: inherit;
 }
@@ -344,8 +355,13 @@ button.ghost:hover {
   border-color: var(--teal);
   background: var(--surface-strong);
 }
-.welcome-option:active:not(:disabled) { transform: translateY(1px); }
-.welcome-option:disabled { opacity: 0.6; cursor: progress; }
+.welcome-option:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.welcome-option:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
 
 .welcome-option-accent {
   border-color: var(--teal);
@@ -421,8 +437,12 @@ button.ghost:hover {
   border-top: 1px solid var(--line);
 }
 
-.welcome-footer a { color: var(--muted); }
-.welcome-footer a:hover { color: var(--teal); }
+.welcome-footer a {
+  color: var(--muted);
+}
+.welcome-footer a:hover {
+  color: var(--teal);
+}
 
 /* ── Share-link modal ──────────────────────────────────────────────────── */
 
@@ -438,8 +458,12 @@ button.ghost:hover {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .share-modal {
@@ -479,7 +503,10 @@ button.ghost:hover {
   cursor: pointer;
   border-radius: 6px;
 }
-.share-modal-close:hover { color: var(--text); background: var(--surface); }
+.share-modal-close:hover {
+  color: var(--text);
+  background: var(--surface);
+}
 
 .share-modal-url-row {
   display: grid;
@@ -623,14 +650,21 @@ button.ghost:hover {
   font-size: 0.85rem;
   user-select: none;
 }
-.panel-section > summary::-webkit-details-marker { display: none; }
+.panel-section > summary::-webkit-details-marker {
+  display: none;
+}
 .panel-section > summary::before {
   content: "▸";
   font-size: 0.8em;
   transition: transform 0.15s ease;
 }
-.panel-section[open] > summary::before { transform: rotate(90deg); }
-.panel-section > summary:hover { color: var(--text); background: var(--surface-strong); }
+.panel-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+.panel-section > summary:hover {
+  color: var(--text);
+  background: var(--surface-strong);
+}
 
 .panel-section-body {
   display: grid;
@@ -671,7 +705,10 @@ button.ghost:hover {
   justify-content: center;
   color: var(--muted);
 }
-.export-mini:hover { color: var(--teal); border-color: var(--teal); }
+.export-mini:hover {
+  color: var(--teal);
+  border-color: var(--teal);
+}
 
 .export-hint {
   margin: 4px 2px 0;

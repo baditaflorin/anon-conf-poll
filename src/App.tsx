@@ -32,7 +32,14 @@ import {
   printReport,
   readClipboardText
 } from "./features/io/downloads";
-import { attendeeShareUrl, decodeInviteFromHash, encodeInvite, encodeRoom, inviteBelongsToRoom, roomShareUrl } from "./features/polls/room";
+import {
+  attendeeShareUrl,
+  decodeInviteFromHash,
+  encodeInvite,
+  encodeRoom,
+  inviteBelongsToRoom,
+  roomShareUrl
+} from "./features/polls/room";
 import { tallyVotes } from "./features/polls/tally";
 import type {
   Invite,
@@ -112,8 +119,29 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [welcomeBusy, setWelcomeBusy] = useState(false);
 
-  // Check whether a saved session exists (for the "Continue" option on welcome).
-  // Only relevant when the URL doesn't already specify a room.
+  // Warm the Semaphore zk-SNARK proving artifacts in the background.
+  // Without this, the first vote / first question stalls the UI for
+  // 10+ seconds while ~hundreds of MB of circuit blobs download.
+  // Doing it once at app load means the user can navigate and pick
+  // their answer while the artifacts arrive.
+  useEffect(() => {
+    let cancelled = false;
+    void import("./features/proofs/semaphore").then(({ preloadSemaphore }) => {
+      if (cancelled) return;
+      preloadSemaphore().catch(() => {
+        // Silent — preload is a UX optimisation, not a precondition.
+        // A failure here means the next real proof attempt will hit
+        // the same error in its own try/catch with the right context
+        // for the user.
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Check whether a saved session exists (for the "Continue" option on
+  // welcome). Only relevant when the URL doesn't already specify a room.
   useEffect(() => {
     if (bootstrap.manifest || bootstrap.roomError) {
       return;
@@ -137,7 +165,7 @@ export default function App() {
           setBootstrap({
             manifest: saved.manifest,
             invites: [],
-            invite: saved.activeInvite,
+            invite: saved.activeInvite
           });
           return;
         }
@@ -259,7 +287,20 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [turnUrl, setTurnUrl] = useState("");
   const [turnUsername, setTurnUsername] = useState("");
   const [turnCredential, setTurnCredential] = useState("");
-  const { votes, questions, status, peers, signalingUrl, activeIceServers, announcedPeers, webrtcPeers, reannounceCount, forceReannounce, publishVote, publishQuestion } = useSyncedRoom(manifest);
+  const {
+    votes,
+    questions,
+    status,
+    peers,
+    signalingUrl,
+    activeIceServers,
+    announcedPeers,
+    webrtcPeers,
+    reannounceCount,
+    forceReannounce,
+    publishVote,
+    publishQuestion
+  } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
@@ -702,7 +743,6 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       w.__anonPollLoadSample = false;
       loadSampleInputs();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function castVote(pollId: string) {
@@ -913,7 +953,11 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
       <section className="status-strip" aria-label="Room status">
         <Status icon={<Radio size={18} />} label="Room" value={manifest.roomId} />
-        <Status icon={<Wifi size={18} />} label="Connection" value={humanizeMeshState(status, peers, webrtcPeers)} />
+        <Status
+          icon={<Wifi size={18} />}
+          label="Connection"
+          value={humanizeMeshState(status, peers, webrtcPeers)}
+        />
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"
@@ -944,7 +988,13 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             <Status
               icon={<Wifi size={18} />}
               label="TURN"
-              value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
+              value={
+                activeIceServers.some(
+                  (s) => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")
+                )
+                  ? "✓ relay ready"
+                  : "STUN only"
+              }
             />
           )}
           <button
@@ -1108,7 +1158,12 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                   issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
                 />
               ) : null}
-              <button type="button" className="primary" disabled={Boolean(busy)} onClick={startNewRoom}>
+              <button
+                type="button"
+                className="primary"
+                disabled={Boolean(busy)}
+                onClick={startNewRoom}
+              >
                 <RefreshCw size={18} aria-hidden="true" />
                 Rebuild this room
               </button>
@@ -1145,7 +1200,8 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             <>
               <h3>Attendee links</h3>
               <p className="attendee-link-hint">
-                Each link is unique. One per person. Opening it loads the room and invite automatically — no paste step.
+                Each link is unique. One per person. Opening it loads the room and invite
+                automatically — no paste step.
               </p>
               <div className="attendee-link-list">
                 {organizerInvites.map((inv, i) => (
@@ -1154,7 +1210,9 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                     <button
                       type="button"
                       className="attendee-link-copy"
-                      onClick={() => void copyText(attendeeShareUrl(manifest, inv), `Link #${i + 1} copied.`)}
+                      onClick={() =>
+                        void copyText(attendeeShareUrl(manifest, inv), `Link #${i + 1} copied.`)
+                      }
                     >
                       <Copy size={14} aria-hidden="true" />
                       Copy link
@@ -1203,7 +1261,8 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                 />
               </label>
               <p className="connection-note">
-                Fetches time-limited HMAC credentials on each connect. Leave empty to use the ICE servers below.
+                Fetches time-limited HMAC credentials on each connect. Leave empty to use the ICE
+                servers below.
               </p>
               <button
                 type="button"
@@ -1309,7 +1368,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                   onClick={() => {
                     resetIceServers();
                     setIceServers(DEFAULT_ICE_SERVERS);
-                    setToast({ tone: "good", message: "Reset to Google STUN defaults. Reload to apply." });
+                    setToast({
+                      tone: "good",
+                      message: "Reset to Google STUN defaults. Reload to apply."
+                    });
                   }}
                 >
                   Reset defaults
@@ -1442,33 +1504,64 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               </button>
               <div className="export-row">
                 <span className="export-row-label">Results JSON</span>
-                <button type="button" className="export-mini" onClick={() => downloadResults("json")} title="Download">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={() => downloadResults("json")}
+                  title="Download"
+                >
                   <Download size={14} aria-hidden="true" />
                 </button>
-                <button type="button" className="export-mini" onClick={() => void copyResults("json")} title="Copy">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={() => void copyResults("json")}
+                  title="Copy"
+                >
                   <Copy size={14} aria-hidden="true" />
                 </button>
               </div>
               <div className="export-row">
                 <span className="export-row-label">Votes CSV</span>
-                <button type="button" className="export-mini" onClick={() => downloadResults("csv")} title="Download">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={() => downloadResults("csv")}
+                  title="Download"
+                >
                   <Download size={14} aria-hidden="true" />
                 </button>
-                <button type="button" className="export-mini" onClick={() => void copyResults("csv")} title="Copy">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={() => void copyResults("csv")}
+                  title="Copy"
+                >
                   <Copy size={14} aria-hidden="true" />
                 </button>
               </div>
               <div className="export-row">
                 <span className="export-row-label">Full saved state</span>
-                <button type="button" className="export-mini" onClick={downloadState} title="Download">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={downloadState}
+                  title="Download"
+                >
                   <Download size={14} aria-hidden="true" />
                 </button>
-                <button type="button" className="export-mini" onClick={() => void copyState()} title="Copy">
+                <button
+                  type="button"
+                  className="export-mini"
+                  onClick={() => void copyState()}
+                  title="Copy"
+                >
                   <Copy size={14} aria-hidden="true" />
                 </button>
               </div>
               <p className="export-hint">
-                JSON has tallies + provenance. CSV has raw vote rows for spreadsheets. Saved state archives everything in this browser.
+                JSON has tallies + provenance. CSV has raw vote rows for spreadsheets. Saved state
+                archives everything in this browser.
               </p>
             </div>
           </details>

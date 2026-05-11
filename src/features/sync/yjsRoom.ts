@@ -50,8 +50,12 @@ function hookPeer(peerId: string, peer: SimplePeer) {
     } else if (sig.type === "answer") {
       console.info(`[ice] → ANSWER sent to ${short}`);
     } else if (sig.candidate) {
-      const cand = (sig.candidate as Record<string, unknown>).candidate as string ?? "";
-      const type = cand.includes(" relay ") ? "RELAY 🔀" : cand.includes(" srflx ") ? "SRFLX 🔭" : "HOST 🏠";
+      const cand = ((sig.candidate as Record<string, unknown>).candidate as string) ?? "";
+      const type = cand.includes(" relay ")
+        ? "RELAY 🔀"
+        : cand.includes(" srflx ")
+          ? "SRFLX 🔭"
+          : "HOST 🏠";
       console.info(`[ice] → candidate ${type} to ${short}: ${cand.slice(0, 120)}`);
     }
   });
@@ -63,8 +67,8 @@ function hookPeer(peerId: string, peer: SimplePeer) {
     if (pc) {
       console.debug(
         `[ice] ${short} iceConnection=${pc.iceConnectionState}` +
-        ` connection=${pc.connectionState}` +
-        ` signaling=${pc.signalingState}`
+          ` connection=${pc.connectionState}` +
+          ` signaling=${pc.signalingState}`
       );
       if (
         pc.iceConnectionState === "connected" ||
@@ -93,7 +97,7 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
   console.info(
     "[sync] ICE servers:",
     iceServers
-      .map(s => `${s.urls}${s.username ? ` (user=${s.username.slice(0, 8)}…)` : ""}`)
+      .map((s) => `${s.urls}${s.username ? ` (user=${s.username.slice(0, 8)}…)` : ""}`)
       .join(", ")
   );
 
@@ -106,14 +110,18 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
     });
 
     // Log signaling WebSocket open/close/error events
-    const ws = (provider as unknown as {
-      signalingConns?: { ws?: {
-        addEventListener?: (...a: unknown[]) => void;
-      } }[]
-    }).signalingConns?.[0]?.ws;
+    const ws = (
+      provider as unknown as {
+        signalingConns?: {
+          ws?: {
+            addEventListener?: (...a: unknown[]) => void;
+          };
+        }[];
+      }
+    ).signalingConns?.[0]?.ws;
 
     if (ws?.addEventListener) {
-      ws.addEventListener("open",  () => console.info("[sync] signaling WS opened:", signalingUrl));
+      ws.addEventListener("open", () => console.info("[sync] signaling WS opened:", signalingUrl));
       ws.addEventListener("close", (e: unknown) => console.warn("[sync] signaling WS closed:", e));
       ws.addEventListener("error", (e: unknown) => console.error("[sync] signaling WS error:", e));
     }
@@ -127,16 +135,16 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
         bcPeers: string[];
       };
       console.info("[sync] peers event →", {
-        added:   ev.added.map(id => id.slice(0, 8)),
-        removed: ev.removed.map(id => id.slice(0, 8)),
+        added: ev.added.map((id) => id.slice(0, 8)),
+        removed: ev.removed.map((id) => id.slice(0, 8)),
         webrtcTotal: ev.webrtcPeers.length,
-        bcTotal:     ev.bcPeers.length,
+        bcTotal: ev.bcPeers.length
       });
 
       // Attach ICE debug hooks to newly discovered WebRTC peers
       const room = (provider as unknown as { room?: RoomInternal }).room;
       if (room) {
-        ev.added.forEach(peerId => {
+        ev.added.forEach((peerId) => {
           const conn = room.webrtcConns.get(peerId);
           if (conn?.peer) hookPeer(peerId, conn.peer);
         });
@@ -158,12 +166,12 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
         // Force a fresh announce to all signaling connections so peers that
         // connected before us (or missed our initial announce) can see us.
         const sigConns = prov.signalingConns ?? [];
-        sigConns.forEach(conn => {
+        sigConns.forEach((conn) => {
           if (conn.connected) {
             conn.send({
               type: "publish",
               topic: (room as unknown as { roomName: string }).roomName,
-              data: { type: "announce", from: (room as unknown as { peerId: string }).peerId },
+              data: { type: "announce", from: (room as unknown as { peerId: string }).peerId }
             });
           }
         });
@@ -172,8 +180,8 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
           const pc = conn.peer._pc;
           console.debug(
             `[sync] diagnostic: peer ${peerId.slice(0, 8)}` +
-            ` ice=${pc?.iceConnectionState ?? "n/a"}` +
-            ` conn=${pc?.connectionState ?? "n/a"}`
+              ` ice=${pc?.iceConnectionState ?? "n/a"}` +
+              ` conn=${pc?.connectionState ?? "n/a"}`
           );
         });
       }
@@ -185,7 +193,6 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
       clearInterval(diagInterval);
       origDestroy();
     };
-
   } catch (err) {
     console.error("[sync] WebrtcProvider failed:", err);
     provider = null;

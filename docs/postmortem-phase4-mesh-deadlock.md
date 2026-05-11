@@ -27,6 +27,7 @@ The server logs looked healthy:
 `delivered=1` looked like success. The first client subscribed, the second client announced, and the server forwarded the announce to the first client. By every metric on the server, the protocol was working.
 
 But nothing happened next. Y-webrtc should have:
+
 1. Received the announce on client 1
 2. Created a `WebrtcConn` with the remote peer ID
 3. Spun up a `SimplePeer` as initiator
@@ -38,6 +39,7 @@ Step 5 was the diagnostic gold: a publish with `dataType=signal`. **It never cam
 ## Why the message was being dropped silently
 
 In Node.js's `ws` library:
+
 - `ws.on('message', (raw, isBinary) => …)` hands you a `Buffer` regardless of frame type
 - `ws.send(string)` sends a **text** frame
 - `ws.send(Buffer)` sends a **binary** frame
@@ -47,9 +49,9 @@ The server received the browser's text frame and immediately re-sent it as a `Bu
 In `lib0/websocket` (which y-webrtc uses on the browser side):
 
 ```js
-ws.onmessage = e => {
+ws.onmessage = (e) => {
   let n = e.data;
-  let i = typeof n == 'string' ? JSON.parse(n) : n;
+  let i = typeof n == "string" ? JSON.parse(n) : n;
   // … emit message
 };
 ```
@@ -126,5 +128,5 @@ All of those are net improvements regardless of the bug. But the bug itself was 
 ## Lessons for next time
 
 1. **When you bridge between two WebSocket implementations, explicitly cast types.** The `ws` package on Node and the browser `WebSocket` API agree on the wire format but disagree on how `send()` interprets its argument. If you're forwarding bytes, decide whether the bytes are text or binary and be explicit.
-2. **"Delivered" is not "processed."** A signaling server should log message *content* (or at least content type / length / first bytes), not just routing decisions. The single most useful diagnostic would have been `text=${text.slice(0,60)}` on the broadcast line.
+2. **"Delivered" is not "processed."** A signaling server should log message _content_ (or at least content type / length / first bytes), not just routing decisions. The single most useful diagnostic would have been `text=${text.slice(0,60)}` on the broadcast line.
 3. **When eight reasonable hypotheses all fail, check the wire format.** The transport itself is rarely the bug — except when it is. Then it costs you three days because you trusted it.

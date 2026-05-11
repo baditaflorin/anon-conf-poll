@@ -9,13 +9,7 @@ import { copyToClipboard } from "../io/downloads";
  * works. Single big copy button, optional QR, compact layout that doesn't
  * dominate the screen even when the URL is ~3 KB (room manifests get long).
  */
-export function ShareLinkModal({
-  url,
-  onDismiss,
-}: {
-  url: string;
-  onDismiss: () => void;
-}) {
+export function ShareLinkModal({ url, onDismiss }: { url: string; onDismiss: () => void }) {
   const [copied, setCopied] = useState(false);
   // QR codes for very long URLs become unscannably dense at any reasonable
   // size. Hide the QR by default past ~1200 chars and let the user opt in.
@@ -43,19 +37,14 @@ export function ShareLinkModal({
       }}
     >
       <div className="share-modal">
-        <button
-          type="button"
-          className="share-modal-close"
-          onClick={onDismiss}
-          aria-label="Close"
-        >
+        <button type="button" className="share-modal-close" onClick={onDismiss} aria-label="Close">
           <X size={20} />
         </button>
 
         <h2 id="share-modal-title">Your room is ready</h2>
         <p className="share-modal-lede">
-          Share this link with attendees. Anyone with the link can join and vote
-          anonymously — there's no other access control.
+          Share this link with attendees. Anyone with the link can join and vote anonymously —
+          there's no other access control.
         </p>
 
         <div className="share-modal-url-row">
@@ -73,7 +62,8 @@ export function ShareLinkModal({
           </button>
         </div>
         <p className="share-modal-url-meta">
-          {url.length.toLocaleString()} characters · the room manifest travels in the URL fragment, never sent to a server
+          {url.length.toLocaleString()} characters · the room manifest travels in the URL fragment,
+          never sent to a server
         </p>
 
         <button
@@ -88,9 +78,8 @@ export function ShareLinkModal({
           <div className="share-modal-qr">
             {isDenseUrl ? (
               <p className="share-modal-qr-warn">
-                This room URL is long ({url.length.toLocaleString()} chars), so the QR is
-                very dense and may not scan reliably. Sending the link by message or AirDrop
-                is more reliable.
+                This room URL is long ({url.length.toLocaleString()} chars), so the QR is very dense
+                and may not scan reliably. Sending the link by message or AirDrop is more reliable.
               </p>
             ) : null}
             <QrCode text={url} size={isDenseUrl ? 320 : 220} />

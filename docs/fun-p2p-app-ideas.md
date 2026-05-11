@@ -1,6 +1,6 @@
 # Five fun peer-to-peer app ideas
 
-Companion to [`self-hosted-webrtc-stack.md`](./self-hosted-webrtc-stack.md). Those five ideas were *useful*. These five are *fun* — built for shared moments at parties, gatherings, hikes, dinners. Each one is GitHub-Pages-only, peer-to-peer over the self-hosted infra at `turn.0docker.com`, and works between strangers who scan a QR.
+Companion to [`self-hosted-webrtc-stack.md`](./self-hosted-webrtc-stack.md). Those five ideas were _useful_. These five are _fun_ — built for shared moments at parties, gatherings, hikes, dinners. Each one is GitHub-Pages-only, peer-to-peer over the self-hosted infra at `turn.0docker.com`, and works between strangers who scan a QR.
 
 The pattern is the same: copy `turnConfig.ts` from the stack reference, change the `STORAGE_PREFIX`, decide on signaling (y-webrtc for room-mesh apps, PeerJS for star topology, raw `RTCPeerConnection` for QR/manual exchange).
 
@@ -8,7 +8,7 @@ The pattern is the same: copy `turnConfig.ts` from the stack reference, change t
 
 ## 5.1 `mob-pong` — the Pong ball travels across all your phones
 
-**One-line pitch:** put 4 phones in a row on a table, the Pong ball *physically rolls from one screen to the next*.
+**One-line pitch:** put 4 phones in a row on a table, the Pong ball _physically rolls from one screen to the next_.
 
 Two paddles, one on the leftmost phone, one on the rightmost. The ball is a shared piece of state. When it leaves your screen on the right at `x = screen.width, y = 250`, the next phone in the mesh starts rendering it entering at `x = 0, y = 250` — same velocity, same physics. The four phones form one continuous play surface. Phones figure out their position in the row via "shake to claim spot N" or by a host scrolling through QR-coded position assignments.
 
@@ -25,6 +25,7 @@ Two paddles, one on the leftmost phone, one on the rightmost. The ball is a shar
 **One-line pitch:** the children's "telephone" game, except your voice clip mutates as it travels and at the end everyone hears the comedy.
 
 Round mechanic:
+
 1. Host starts a round with a prompt ("describe your worst hangover in 5 seconds").
 2. The first peer records 5 seconds, the recording is sent to a random next peer over the data channel.
 3. That peer hears it, then records what they think they heard — also 5 seconds.
@@ -73,7 +74,7 @@ Scoreboard is anonymous-by-default — each player picks an emoji + handle the h
 
 **One-line pitch:** point your phone at any star, mark it, give it a name; over the course of a night your friends collectively map the actual sky above you.
 
-You're outside with friends. Open the page, allow camera + orientation. Look up, point your phone, tap. The page records the orientation (azimuth + altitude from `DeviceOrientationEvent`), shows a dot on a shared celestial dome map. Other phones in the mesh see your dot appear in their map oriented to *their* phone's bearing, so when they look up they can find the same star. Name a star, draw a constellation by connecting your dots, see what others connected. By the end of the night the room has a shared, ephemeral, hand-drawn star atlas that disappears when everyone closes the tab — or one person can take a screenshot.
+You're outside with friends. Open the page, allow camera + orientation. Look up, point your phone, tap. The page records the orientation (azimuth + altitude from `DeviceOrientationEvent`), shows a dot on a shared celestial dome map. Other phones in the mesh see your dot appear in their map oriented to _their_ phone's bearing, so when they look up they can find the same star. Name a star, draw a constellation by connecting your dots, see what others connected. By the end of the night the room has a shared, ephemeral, hand-drawn star atlas that disappears when everyone closes the tab — or one person can take a screenshot.
 
 **Why this stack:** the whole point is the shared map, in real time, between people sitting on the same hillside. Wifi is unlikely (you're outside); cellular is almost certain. TURN is what makes the mesh work when nobody's on shared LAN. The mesh discovery cost is one QR scan to join the room.
 
@@ -85,13 +86,13 @@ You're outside with friends. Open the page, allow camera + orientation. Look up,
 
 ## Picking between them
 
-| Idea | Setting | Group size | Vibe | Hard part |
-|---|---|---|---|---|
-| `mob-pong` | indoors, table | 2–8 | kinetic, kids will scream | clock sync at frame rate |
-| `whisper-chain` | dinner party | 4–12 | comedy | smooth audio handoff |
-| `silent-disco-radio` | gathering / dance floor | 5–50 | musical | latency between DJ and listeners |
-| `room-jeopardy` | living room / pub | 3–15 | competitive | fair "who buzzed first" with clock skew |
-| `constellation-naming` | outdoors at night | 3–20 | contemplative | DeviceOrientation accuracy + cellular-only mesh |
+| Idea                   | Setting                 | Group size | Vibe                      | Hard part                                       |
+| ---------------------- | ----------------------- | ---------- | ------------------------- | ----------------------------------------------- |
+| `mob-pong`             | indoors, table          | 2–8        | kinetic, kids will scream | clock sync at frame rate                        |
+| `whisper-chain`        | dinner party            | 4–12       | comedy                    | smooth audio handoff                            |
+| `silent-disco-radio`   | gathering / dance floor | 5–50       | musical                   | latency between DJ and listeners                |
+| `room-jeopardy`        | living room / pub       | 3–15       | competitive               | fair "who buzzed first" with clock skew         |
+| `constellation-naming` | outdoors at night       | 3–20       | contemplative             | DeviceOrientation accuracy + cellular-only mesh |
 
 **Easiest first prototype:** `room-jeopardy`. Pure data-channel messages, no audio/video streams, no orientation math. The whole game logic fits in ~300 lines on top of the standard `turnConfig.ts` pattern.
 

@@ -16,7 +16,7 @@ export type WelcomeChoice =
 export function WelcomeScreen({
   hasSavedSession,
   onChoose,
-  busy,
+  busy
 }: {
   hasSavedSession: boolean;
   onChoose: (choice: WelcomeChoice) => void;
@@ -137,7 +137,7 @@ function WelcomeOption({
   cta,
   onClick,
   accent,
-  disabled,
+  disabled
 }: {
   icon: ReactNode;
   title: string;

@@ -39,11 +39,11 @@ This document covers four things, in order:
         70 lines Node     200 lines Node     coturn 4.6
 ```
 
-| Repo | Endpoint | What it does |
-|---|---|---|
-| [baditaflorin/signaling-server](https://github.com/baditaflorin/signaling-server) | `wss://turn.0docker.com/ws` | y-webrtc compatible WebSocket fan-out. Clients `subscribe` to a topic (room name), `publish` JSON blobs, and the server rebroadcasts to every other subscriber. Inspects nothing inside the `data` field. |
-| [baditaflorin/turn-token-server](https://github.com/baditaflorin/turn-token-server) | `https://turn.0docker.com/credentials` | Issues time-limited HMAC-SHA1 credentials (1-hour TTL by default). The shared secret never leaves the server. Returns `{username, password, ttl, uris}`. |
-| [baditaflorin/coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner) | `turn:turn.0docker.com:3479` UDP/TCP | The actual TURN relay. Runs `coturn 4.6` in Docker with `--use-auth-secret`, validating HMAC creds against the same secret the token server signs with. UDP relay ports 49152–65535. |
+| Repo                                                                                | Endpoint                               | What it does                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [baditaflorin/signaling-server](https://github.com/baditaflorin/signaling-server)   | `wss://turn.0docker.com/ws`            | y-webrtc compatible WebSocket fan-out. Clients `subscribe` to a topic (room name), `publish` JSON blobs, and the server rebroadcasts to every other subscriber. Inspects nothing inside the `data` field. |
+| [baditaflorin/turn-token-server](https://github.com/baditaflorin/turn-token-server) | `https://turn.0docker.com/credentials` | Issues time-limited HMAC-SHA1 credentials (1-hour TTL by default). The shared secret never leaves the server. Returns `{username, password, ttl, uris}`.                                                  |
+| [baditaflorin/coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner)       | `turn:turn.0docker.com:3479` UDP/TCP   | The actual TURN relay. Runs `coturn 4.6` in Docker with `--use-auth-secret`, validating HMAC creds against the same secret the token server signs with. UDP relay ports 49152–65535.                      |
 
 All three have `/health`, Prometheus `/metrics`, nginx example configs, and bootstrap scripts. **Total cost: ~4 €/month** on a Hetzner CX22 running all three side-by-side.
 
@@ -54,8 +54,8 @@ If `turn.0docker.com` goes down, every consumer falls back to STUN-only (which w
 The y-webrtc client uses **text** WebSocket frames. The Node.js `ws` library's `on('message', raw => …)` hands you a `Buffer`, and `ws.send(buffer)` sends a **binary** frame, which the browser silently drops because `lib0/websocket` only `JSON.parse`s text. **Always convert** to string before forwarding:
 
 ```js
-const text = typeof raw === 'string' ? raw : raw.toString('utf8');
-peer.send(text);  // ✅
+const text = typeof raw === "string" ? raw : raw.toString("utf8");
+peer.send(text); // ✅
 ```
 
 This bug is fixed upstream in `signaling-server` v1.0.0+. Don't reimplement signaling without copying that fix.
@@ -70,11 +70,9 @@ Drop this file (or the appropriate flavour) into your app. **Single file, no dep
 // src/lib/turnConfig.ts
 
 const DEFAULT_TURN_TOKEN_URL = "https://turn.0docker.com/credentials";
-const STORAGE_PREFIX = "your-app";   // ← change this
+const STORAGE_PREFIX = "your-app"; // ← change this
 
-export const STUN_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-];
+export const STUN_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 type TurnCredentialResponse = {
   username: string;
@@ -106,8 +104,8 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
       ...cred.uris.map((u) => ({
         urls: u,
         username: cred.username,
-        credential: cred.password,
-      })),
+        credential: cred.password
+      }))
     ];
   } catch (err) {
     console.warn("[turn] credential fetch failed, falling back to STUN-only:", err);
@@ -121,9 +119,9 @@ For y-webrtc apps, **also** define `loadSignalingUrls()`:
 ```ts
 const DEFAULT_SIGNALING_URL = "wss://turn.0docker.com/ws";
 const DEAD_SIGNALING_URLS = new Set([
-  "wss://signaling.yjs.dev",                          // dead Heroku app
+  "wss://signaling.yjs.dev", // dead Heroku app
   "ws://signaling.yjs.dev",
-  "wss://y-webrtc-signaling-eu.herokuapp.com",        // dead
+  "wss://y-webrtc-signaling-eu.herokuapp.com" // dead
 ]);
 
 export function loadSignalingUrls(): string[] {
@@ -135,8 +133,7 @@ export function loadSignalingUrls(): string[] {
     return [stored];
   }
   const envUrl =
-    (import.meta.env?.VITE_WEBRTC_SIGNALING as string | undefined) ??
-    DEFAULT_SIGNALING_URL;
+    (import.meta.env?.VITE_WEBRTC_SIGNALING as string | undefined) ?? DEFAULT_SIGNALING_URL;
   return [envUrl];
 }
 ```
@@ -149,10 +146,10 @@ export function loadSignalingUrls(): string[] {
 import { WebrtcProvider } from "y-webrtc";
 import { loadSignalingUrls, fetchIceServers } from "./turnConfig";
 
-const iceServers = await fetchIceServers();  // ← await this BEFORE constructing the provider
+const iceServers = await fetchIceServers(); // ← await this BEFORE constructing the provider
 const provider = new WebrtcProvider(roomName, doc, {
   signaling: loadSignalingUrls(),
-  peerOpts: { config: { iceServers } },
+  peerOpts: { config: { iceServers } }
 });
 ```
 
@@ -182,7 +179,11 @@ import { fetchIceServers, STUN_SERVERS } from "./turnConfig";
 
 const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
 void fetchIceServers().then((iceServers) => {
-  try { pc.setConfiguration({ iceServers }); } catch { /* peer closed */ }
+  try {
+    pc.setConfiguration({ iceServers });
+  } catch {
+    /* peer closed */
+  }
 });
 ```
 
@@ -190,12 +191,12 @@ void fetchIceServers().then((iceServers) => {
 
 ### Override knobs the user already gets for free
 
-| Where | How | Effect |
-|---|---|---|
-| Build env | `VITE_TURN_TOKEN_URL=https://your-turn.example.com/credentials` | Override at compile time |
-| Build env | `VITE_WEBRTC_SIGNALING=wss://your-signal.example.com/ws` | Override signaling (y-webrtc apps only) |
-| Browser runtime | `localStorage["<app>:turnTokenUrl"] = "…"` | Per-browser override |
-| Disable TURN | Either set to `""` | Falls back to STUN-only |
+| Where           | How                                                             | Effect                                  |
+| --------------- | --------------------------------------------------------------- | --------------------------------------- |
+| Build env       | `VITE_TURN_TOKEN_URL=https://your-turn.example.com/credentials` | Override at compile time                |
+| Build env       | `VITE_WEBRTC_SIGNALING=wss://your-signal.example.com/ws`        | Override signaling (y-webrtc apps only) |
+| Browser runtime | `localStorage["<app>:turnTokenUrl"] = "…"`                      | Per-browser override                    |
+| Disable TURN    | Either set to `""`                                              | Falls back to STUN-only                 |
 
 ---
 
@@ -204,15 +205,18 @@ void fetchIceServers().then((iceServers) => {
 These exist; copy their patterns rather than re-inventing.
 
 ### Fully self-hosted (signaling + TURN)
+
 - **[anon-conf-poll](https://github.com/baditaflorin/anon-conf-poll)** — anonymous live polling with Semaphore zk proofs. The reference implementation. Has the most thorough docs (`docs/mesh-architecture.md`, `docs/postmortem-phase4-mesh-deadlock.md`, `docs/privacy.md`).
 - **[meshtrack-studio](https://github.com/baditaflorin/meshtrack-studio)** — collaborative browser DAW.
 - **[physical-kanban-sync](https://github.com/baditaflorin/physical-kanban-sync)** — AprilTag-scanned kanban with CRDT board state.
 
 ### Custom signaling, our TURN only
+
 - **[castle-question-hour](https://github.com/baditaflorin/castle-question-hour)** — anonymous reflection prompts; Go backend serves signaling at `/api/v1/signal/{code}`; TURN comes from us.
 - **[room-vj](https://github.com/baditaflorin/room-vj)** — synced live visuals; PeerJS for signaling; TURN from us.
 
 ### No online signaling at all (QR / copy-paste / capsule exchange), our TURN
+
 - **[cipher](https://github.com/baditaflorin/cipher)** — encrypted group chat; signal capsules exchanged via secure messaging.
 - **[match-proof](https://github.com/baditaflorin/match-proof)** — Bloom-filter peer matching.
 - **[trust-no-one-anonymizer](https://github.com/baditaflorin/trust-no-one-anonymizer)** — anonymized video calls; manual SDP paste.
@@ -282,7 +286,7 @@ Each team member loads the page once a day, types three lines (yesterday / today
 
 Paste this verbatim into a fresh Claude Code session when you want to start a new app on this stack. It is intentionally self-contained so the new session doesn't need to read the 500k-token history that produced this document.
 
-````markdown
+```markdown
 I want to build a new GitHub-Pages-only, peer-to-peer browser app using my
 existing self-hosted WebRTC infrastructure. Please follow this brief
 exactly. Do NOT re-derive any of it — every claim in here is the result of
@@ -308,11 +312,11 @@ many days of debugging that already happened.
 
 ## Self-hosted infrastructure (use these endpoints by default)
 
-| Repo | Endpoint | Purpose |
-|---|---|---|
-| [signaling-server](https://github.com/baditaflorin/signaling-server) | `wss://turn.0docker.com/ws` | y-webrtc protocol WebSocket fan-out |
-| [turn-token-server](https://github.com/baditaflorin/turn-token-server) | `https://turn.0docker.com/credentials` | HMAC TURN creds, 1-hour TTL |
-| [coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner) | `turn:turn.0docker.com:3479` | TURN relay |
+| Repo                                                                   | Endpoint                               | Purpose                             |
+| ---------------------------------------------------------------------- | -------------------------------------- | ----------------------------------- |
+| [signaling-server](https://github.com/baditaflorin/signaling-server)   | `wss://turn.0docker.com/ws`            | y-webrtc protocol WebSocket fan-out |
+| [turn-token-server](https://github.com/baditaflorin/turn-token-server) | `https://turn.0docker.com/credentials` | HMAC TURN creds, 1-hour TTL         |
+| [coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner)       | `turn:turn.0docker.com:3479`           | TURN relay                          |
 
 Read [docs/self-hosted-webrtc-stack.md in anon-conf-poll](https://github.com/baditaflorin/anon-conf-poll/blob/main/docs/self-hosted-webrtc-stack.md)
 for the full integration pattern, including the 70-line `turnConfig.ts`
@@ -373,6 +377,6 @@ inventing your own:
 Begin by reading the reference apps closest to my goal, then propose a
 file layout before writing any code. Confirm the approach with me before
 committing.
-````
+```
 
 That's the full briefing. Paste it, fill in the one paragraph at the top describing what you want to build, and the new session can produce a working app without going through any of the cul-de-sacs that consumed the original conversation.

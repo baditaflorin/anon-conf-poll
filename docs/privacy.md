@@ -12,25 +12,25 @@
 
 ## What flows where
 
-| Data | Stays in browser | Sent to peers | Sent to your Hetzner box | Sent to GitHub |
-|---|---|---|---|---|
-| Attendee names, emails (roster) | ✅ | ❌ | ❌ | ❌ |
-| Invite secrets / Semaphore identities | ✅ | ❌ | ❌ | ❌ |
-| Room manifest (poll questions, options, attendee *commitments*) | ✅ | ✅ via WebRTC | ❌ (the URL fragment is never sent in HTTP) | ❌ |
-| Cast votes (anonymous, with ZK proof) | ✅ | ✅ via WebRTC | ❌ unless TURN-relayed (then encrypted) | ❌ |
-| Q&A items | ✅ | ✅ via WebRTC | ❌ unless TURN-relayed (then encrypted) | ❌ |
-| Peer ID (random UUID per session) | ✅ | ✅ in signaling | ✅ in signaling | ❌ |
-| Your public IP | ✅ | ✅ in ICE candidates (SDP) | ✅ in TCP socket + ICE candidates | ✅ on page load |
-| WebRTC SDP blobs | ✅ | ✅ via signaling | ✅ but treated as opaque JSON | ❌ |
-| TLS handshake metadata (SNI = `turn.0docker.com`) | ❌ | ❌ | ✅ | ❌ |
-| TURN credentials (HMAC username/password) | ✅ | ❌ | ✅ when fetched | ❌ |
+| Data                                                            | Stays in browser | Sent to peers              | Sent to your Hetzner box                    | Sent to GitHub  |
+| --------------------------------------------------------------- | ---------------- | -------------------------- | ------------------------------------------- | --------------- |
+| Attendee names, emails (roster)                                 | ✅               | ❌                         | ❌                                          | ❌              |
+| Invite secrets / Semaphore identities                           | ✅               | ❌                         | ❌                                          | ❌              |
+| Room manifest (poll questions, options, attendee _commitments_) | ✅               | ✅ via WebRTC              | ❌ (the URL fragment is never sent in HTTP) | ❌              |
+| Cast votes (anonymous, with ZK proof)                           | ✅               | ✅ via WebRTC              | ❌ unless TURN-relayed (then encrypted)     | ❌              |
+| Q&A items                                                       | ✅               | ✅ via WebRTC              | ❌ unless TURN-relayed (then encrypted)     | ❌              |
+| Peer ID (random UUID per session)                               | ✅               | ✅ in signaling            | ✅ in signaling                             | ❌              |
+| Your public IP                                                  | ✅               | ✅ in ICE candidates (SDP) | ✅ in TCP socket + ICE candidates           | ✅ on page load |
+| WebRTC SDP blobs                                                | ✅               | ✅ via signaling           | ✅ but treated as opaque JSON               | ❌              |
+| TLS handshake metadata (SNI = `turn.0docker.com`)               | ❌               | ❌                         | ✅                                          | ❌              |
+| TURN credentials (HMAC username/password)                       | ✅               | ❌                         | ✅ when fetched                             | ❌              |
 
 ## Where the anonymity actually comes from
 
 The "anon" in `anon-conf-poll` is **cryptographic**, not network-level. It comes from [Semaphore](https://semaphore.appliedzkp.org/), a zero-knowledge group membership proof:
 
 1. When invites are minted, each attendee gets a private **identity commitment** that is published in the room manifest's merkle tree.
-2. When casting a vote, the attendee's browser generates a Semaphore proof that says: *"I know a secret whose commitment is in this merkle tree, and I am voting `X` on poll `Y`, and my nullifier for `(Y, secret)` is `N`."* — without revealing which commitment is theirs.
+2. When casting a vote, the attendee's browser generates a Semaphore proof that says: _"I know a secret whose commitment is in this merkle tree, and I am voting `X` on poll `Y`, and my nullifier for `(Y, secret)` is `N`."_ — without revealing which commitment is theirs.
 3. Other peers verify the proof and accept the vote. The nullifier `N` prevents the same voter from voting twice on the same poll (without identifying them).
 
 Result: even with the full vote stream from the mesh, no peer can link a vote to a specific attendee. The voter could be anyone in the attendee set.
@@ -57,6 +57,7 @@ You operate the signaling server, the TURN credential issuer, and the coturn TUR
 4. **TLS termination metadata** — nginx logs include source IP, path, response code, user-agent for each HTTPS request to `turn.0docker.com`.
 
 What your server **cannot** see:
+
 - Vote contents, Q&A text, attendee names, invite secrets.
 - The room manifest (lives in the URL fragment, never sent over the wire — the SPA reads it from `location.hash`).
 - Direct peer-to-peer traffic when ICE finds a host or srflx path (most of the time).
@@ -71,6 +72,7 @@ When you join a room you're in a fully-connected mesh with every other peer. Eac
 - See every Q&A item.
 
 What other peers cannot see:
+
 - Your attendee identity (the Semaphore proof is anonymous within the attendee set).
 - Your local attendee roster.
 - Your invite secret.
@@ -80,6 +82,7 @@ What other peers cannot see:
 ## What GitHub can see
 
 GitHub Pages serves the static SPA. On page load it sees:
+
 - Your IP and user-agent.
 - The exact path requested (`/anon-conf-poll/` or with hash, but **hashes are never sent in HTTP requests** — so GitHub does not see the room ID).
 
@@ -87,14 +90,14 @@ After load, GitHub has no further involvement.
 
 ## Threat model summary
 
-| Adversary | Can read votes? | Can identify voters? | Can disrupt the room? |
-|---|---|---|---|
-| Passive network observer (ISP, coffee-shop wifi) | ❌ (TLS to GitHub + signaling, DTLS between peers) | ❌ | ❌ |
-| Your Hetzner host (you) / a compromise of it | ❌ (DTLS) | ❌ for vote contents; ✅ for peer IPs + room IDs | ✅ can take signaling/TURN offline → mesh degrades |
-| GitHub (compromised static hosting) | ❌ until they MITM the JS, then ✅ | ✅ if they replace the JS | ✅ can serve broken app |
-| Malicious peer with valid invite | ✅ sees all votes | ❌ Semaphore hides which attendee | ✅ can spam Q&A, vote within their own quota |
-| Malicious peer **without** invite, but with URL | ✅ sees all votes | ❌ | ✅ can spam Q&A; cannot cast valid votes |
-| Coordinated attacker with link + valid invite + traffic-analysis on your Hetzner | ✅ | maybe — correlating timing of an IP appearing in signaling with a vote arriving in the mesh is theoretically possible if the room is small. Probability shrinks with room size. | ✅ |
+| Adversary                                                                        | Can read votes?                                    | Can identify voters?                                                                                                                                                            | Can disrupt the room?                              |
+| -------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Passive network observer (ISP, coffee-shop wifi)                                 | ❌ (TLS to GitHub + signaling, DTLS between peers) | ❌                                                                                                                                                                              | ❌                                                 |
+| Your Hetzner host (you) / a compromise of it                                     | ❌ (DTLS)                                          | ❌ for vote contents; ✅ for peer IPs + room IDs                                                                                                                                | ✅ can take signaling/TURN offline → mesh degrades |
+| GitHub (compromised static hosting)                                              | ❌ until they MITM the JS, then ✅                 | ✅ if they replace the JS                                                                                                                                                       | ✅ can serve broken app                            |
+| Malicious peer with valid invite                                                 | ✅ sees all votes                                  | ❌ Semaphore hides which attendee                                                                                                                                               | ✅ can spam Q&A, vote within their own quota       |
+| Malicious peer **without** invite, but with URL                                  | ✅ sees all votes                                  | ❌                                                                                                                                                                              | ✅ can spam Q&A; cannot cast valid votes           |
+| Coordinated attacker with link + valid invite + traffic-analysis on your Hetzner | ✅                                                 | maybe — correlating timing of an IP appearing in signaling with a vote arriving in the mesh is theoretically possible if the room is small. Probability shrinks with room size. | ✅                                                 |
 
 ## Hardening levers you have
 

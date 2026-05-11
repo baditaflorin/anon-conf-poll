@@ -9,7 +9,7 @@ import QRCode from "qrcode";
 export function QrCode({
   text,
   size = 220,
-  className,
+  className
 }: {
   text: string;
   size?: number;
@@ -24,7 +24,7 @@ export function QrCode({
       errorCorrectionLevel: "M",
       margin: 1,
       width: size,
-      color: { dark: "#0f4c45", light: "#fffaf1" },
+      color: { dark: "#0f4c45", light: "#fffaf1" }
     }).then((result) => {
       if (!cancelled) setSvg(result);
     });
@@ -46,7 +46,6 @@ export function QrCode({
     <div
       className={className}
       style={{ width: size, height: size, lineHeight: 0 }}
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: svg }}
       aria-label="QR code"
       role="img"
