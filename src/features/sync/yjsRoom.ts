@@ -143,13 +143,30 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
       }
     });
 
-    // Periodic diagnostic snapshot (every 10 s)
+    // Periodic diagnostic snapshot (every 10 s) + re-announce if no peers
     const diagInterval = setInterval(() => {
-      const room = (provider as unknown as { room?: RoomInternal }).room;
+      const prov = provider as unknown as {
+        room?: RoomInternal;
+        signalingConns?: Array<{ connected: boolean; send: (m: unknown) => void }>;
+      };
+      const room = prov.room;
       if (!room) return;
+
       const conns = room.webrtcConns;
       if (conns.size === 0) {
-        console.debug("[sync] diagnostic: no WebRTC peers yet");
+        console.debug("[sync] diagnostic: no WebRTC peers yet — sending re-announce");
+        // Force a fresh announce to all signaling connections so peers that
+        // connected before us (or missed our initial announce) can see us.
+        const sigConns = prov.signalingConns ?? [];
+        sigConns.forEach(conn => {
+          if (conn.connected) {
+            conn.send({
+              type: "publish",
+              topic: (room as unknown as { roomName: string }).roomName,
+              data: { type: "announce", from: (room as unknown as { peerId: string }).peerId },
+            });
+          }
+        });
       } else {
         conns.forEach((conn, peerId) => {
           const pc = conn.peer._pc;
