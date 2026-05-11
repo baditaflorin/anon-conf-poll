@@ -3,7 +3,10 @@ import { defaultPolls, makeId } from "../polls/room";
 import type { GeneratedRoom, Poll } from "../polls/types";
 
 export function createGeneratedRoom(
-  attendeeCount = 24,
+  // Default kept low (12) so a fresh room's share URL stays well under
+  // ~1.5 KB — comfortably below the truncation thresholds that some
+  // messaging apps apply to long URLs. Callers may pass higher counts.
+  attendeeCount = 12,
   title = "Anonymous Conference Poll",
   polls: Poll[] = defaultPolls
 ): GeneratedRoom {

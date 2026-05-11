@@ -214,7 +214,7 @@ export default function App() {
 
 async function createDefaultRoom(): Promise<LoadedRoomSeed> {
   const { createGeneratedRoom } = await import("./features/proofs/attendees");
-  const generated = createGeneratedRoom(24);
+  const generated = createGeneratedRoom(DEFAULT_ATTENDEE_COUNT);
   window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
 
   return {
@@ -1657,9 +1657,14 @@ function toCsv(votes: VerifiedVote[]): string {
   return `${[header, ...rows].join("\n")}\n`;
 }
 
+// Each attendee adds ~80 bytes of compressed commitment to the room manifest
+// and therefore to the share URL. We default to 12 to keep URLs comfortably
+// under WhatsApp/SMS link-preview limits. The hard ceiling is 256.
+const DEFAULT_ATTENDEE_COUNT = 12;
+
 function clampAttendeeCount(value: number): number {
   if (!Number.isFinite(value)) {
-    return 24;
+    return DEFAULT_ATTENDEE_COUNT;
   }
 
   return Math.min(256, Math.max(4, Math.trunc(value)));
