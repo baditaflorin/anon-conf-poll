@@ -50,12 +50,14 @@ import {
   type AppStateSnapshot
 } from "./features/state/appState";
 import { clearAppState, loadAppState, saveAppState } from "./features/storage/localStore";
+import { WelcomeScreen, type WelcomeChoice } from "./features/onboarding/WelcomeScreen";
+import { ShareLinkModal } from "./features/onboarding/ShareLinkModal";
 import { parseInviteInput } from "./features/substance/inviteInput";
 import { inferPolls, type PollPreview } from "./features/substance/pollInference";
 import { buildExportPayload } from "./features/substance/provenance";
 import { inferRoster, type RosterPreview } from "./features/substance/rosterInference";
 import { safeDecodeRoomInput, type SafeRoomResult } from "./features/substance/roomLink";
-import { useSyncedRoom } from "./features/sync/useSyncedRoom";
+import { useSyncedRoom, type SyncStatus } from "./features/sync/useSyncedRoom";
 import {
   DEFAULT_ICE_SERVERS,
   loadIceServers,
@@ -106,49 +108,108 @@ function initialRoom(): RoomSeed {
 export default function App() {
   const seed = useMemo(initialRoom, []);
   const [bootstrap, setBootstrap] = useState<RoomSeed>(seed);
+  const [hasSavedSession, setHasSavedSession] = useState<boolean | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [welcomeBusy, setWelcomeBusy] = useState(false);
 
+  // Check whether a saved session exists (for the "Continue" option on welcome).
+  // Only relevant when the URL doesn't already specify a room.
   useEffect(() => {
     if (bootstrap.manifest || bootstrap.roomError) {
       return;
     }
-
     let cancelled = false;
-
-    void import("./features/proofs/attendees").then(({ createGeneratedRoom }) => {
-      if (cancelled) {
-        return;
-      }
-
-      const generated = createGeneratedRoom(24);
-      window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
-      setBootstrap({
-        manifest: generated.manifest,
-        invites: generated.invites,
-        invite: generated.invites[0] ?? null
-      });
+    void loadAppState().then((saved) => {
+      if (!cancelled) setHasSavedSession(!!saved);
     });
-
     return () => {
       cancelled = true;
     };
-  }, [bootstrap.manifest]);
+  }, [bootstrap.manifest, bootstrap.roomError]);
+
+  async function handleWelcomeChoice(choice: WelcomeChoice) {
+    setWelcomeBusy(true);
+    try {
+      if (choice.kind === "restore") {
+        const saved = await loadAppState();
+        if (saved) {
+          window.history.replaceState(null, "", `#${encodeRoom(saved.manifest)}`);
+          setBootstrap({
+            manifest: saved.manifest,
+            invites: [],
+            invite: saved.activeInvite,
+          });
+          return;
+        }
+        // Saved session vanished between welcome render and click — fall through to host.
+      }
+
+      if (choice.kind === "join") {
+        const decoded = safeDecodeRoomInput(choice.url);
+        if (decoded.ok) {
+          const invite = decodeInviteFromHash(choice.url);
+          window.history.replaceState(null, "", `#${encodeRoom(decoded.manifest)}`);
+          setBootstrap({ manifest: decoded.manifest, invites: [], invite });
+        } else {
+          setBootstrap({ manifest: null, invites: [], invite: null, roomError: decoded });
+        }
+        return;
+      }
+
+      // Host or demo — both create a fresh room. Demo additionally seeds sample data.
+      const next = await createDefaultRoom();
+      setBootstrap(next);
+      setShowShareModal(true);
+      if (choice.kind === "demo") {
+        // Mark for RoomExperience to load sample data after mount.
+        (window as unknown as { __anonPollLoadSample?: boolean }).__anonPollLoadSample = true;
+      }
+    } finally {
+      setWelcomeBusy(false);
+    }
+  }
 
   if (bootstrap.roomError) {
     return (
       <DamagedRoomScreen
         error={bootstrap.roomError}
         onCreateNew={() => {
-          void createDefaultRoom().then(setBootstrap);
+          void createDefaultRoom().then((next) => {
+            setBootstrap(next);
+            setShowShareModal(true);
+          });
         }}
       />
     );
   }
 
   if (!bootstrap.manifest) {
-    return <BootScreen />;
+    // True cold start: show the welcome decision card instead of silently
+    // auto-generating a room behind a spinner. Wait until we know whether a
+    // saved session exists so the "Continue" option renders accurately.
+    if (hasSavedSession === null) {
+      return <BootScreen />;
+    }
+    return (
+      <WelcomeScreen
+        hasSavedSession={hasSavedSession}
+        onChoose={(c) => void handleWelcomeChoice(c)}
+        busy={welcomeBusy}
+      />
+    );
   }
 
-  return <RoomExperience seed={bootstrap as LoadedRoomSeed} />;
+  return (
+    <>
+      <RoomExperience seed={bootstrap as LoadedRoomSeed} />
+      {showShareModal && (
+        <ShareLinkModal
+          url={roomShareUrl(bootstrap.manifest)}
+          onDismiss={() => setShowShareModal(false)}
+        />
+      )}
+    </>
+  );
 }
 
 async function createDefaultRoom(): Promise<LoadedRoomSeed> {
@@ -634,6 +695,16 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     setToast({ tone: "good", message: "Sample roster and poll draft loaded." });
   }
 
+  // If the welcome screen requested a demo room, load the sample inputs once.
+  useEffect(() => {
+    const w = window as unknown as { __anonPollLoadSample?: boolean };
+    if (w.__anonPollLoadSample) {
+      w.__anonPollLoadSample = false;
+      loadSampleInputs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function castVote(pollId: string) {
     const optionId = selectedOptions[pollId];
 
@@ -842,7 +913,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
       <section className="status-strip" aria-label="Room status">
         <Status icon={<Radio size={18} />} label="Room" value={manifest.roomId} />
-        <Status icon={<Wifi size={18} />} label="Mesh" value={`${status} · ${peers} peer(s)`} />
+        <Status icon={<Wifi size={18} />} label="Connection" value={humanizeMeshState(status, peers, webrtcPeers)} />
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"
@@ -1420,6 +1491,26 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       ) : null}
     </main>
   );
+}
+
+/**
+ * Plain-English label for the Mesh / Connection status badge. The previous
+ * "connecting · 1 peer(s)" wording was useful for debugging but confusing for
+ * first-time users — most won't know what a peer is or why being alone is fine.
+ *
+ *   peers   = awareness state count (includes self → minimum 1)
+ *   webrtc  = number of established WebRTC peer connections
+ *   status  = signaling-server WebSocket status
+ */
+function humanizeMeshState(status: SyncStatus, peers: number, webrtc: number): string {
+  if (status === "offline") return "Offline · changes sync when reconnected";
+  if (webrtc >= 1) {
+    const others = Math.max(webrtc, peers - 1);
+    return `Connected with ${others} other${others === 1 ? "" : "s"}`;
+  }
+  if (status === "connecting") return "Looking for others… share the link to invite people";
+  // status === "connected" but no WebRTC peers — i.e. we're online to signaling but alone
+  return "Just you here · share the link to invite people";
 }
 
 function BootScreen() {
