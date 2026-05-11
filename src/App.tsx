@@ -198,7 +198,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [turnUrl, setTurnUrl] = useState("");
   const [turnUsername, setTurnUsername] = useState("");
   const [turnCredential, setTurnCredential] = useState("");
-  const { votes, questions, status, peers, signalingUrl, activeIceServers, publishVote, publishQuestion } = useSyncedRoom(manifest);
+  const { votes, questions, status, peers, signalingUrl, activeIceServers, announcedPeers, webrtcPeers, publishVote, publishQuestion } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
@@ -857,6 +857,11 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
           />
         )}
+        <Status
+          icon={<Radio size={18} />}
+          label="Peers"
+          value={`seen ${announcedPeers} · rtc ${webrtcPeers}`}
+        />
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"

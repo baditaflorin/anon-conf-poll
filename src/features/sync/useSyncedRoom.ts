@@ -15,6 +15,10 @@ export function useSyncedRoom(manifest: RoomManifest) {
   const [signalingUrl, setSignalingUrl] = useState("");
   const [activeIceServers, setActiveIceServers] = useState<IceServer[]>([]);
 
+  // Debug counters visible in the UI without DevTools
+  const [announcedPeers, setAnnouncedPeers] = useState(0);    // peers seen via signaling
+  const [webrtcPeers, setWebrtcPeers] = useState(0);           // peers with an active WebRTC conn
+
   // Step 1: fetch fresh HMAC credentials from the token server (if configured),
   // then create the WebrtcProvider with the up-to-date ICE server list.
   useEffect(() => {
@@ -46,11 +50,25 @@ export function useSyncedRoom(manifest: RoomManifest) {
 
     sync.votes.observe(updateVotes);
     sync.questions.observe(updateQuestions);
+
     sync.provider?.on("status", ({ connected }: { connected: boolean }) => {
       setStatus(connected ? "connected" : "connecting");
       console.info("[sync] status →", connected ? "connected" : "connecting");
     });
+
     sync.provider?.awareness.on("change", updatePeers);
+
+    // Track peers announced via signaling and WebRTC connection count
+    sync.provider?.on("peers", (event: unknown) => {
+      const ev = event as {
+        added: string[];
+        removed: string[];
+        webrtcPeers: string[];
+        bcPeers: string[];
+      };
+      setAnnouncedPeers(prev => prev + ev.added.length - ev.removed.length);
+      setWebrtcPeers(ev.webrtcPeers.length);
+    });
 
     updateVotes();
     updateQuestions();
@@ -71,6 +89,8 @@ export function useSyncedRoom(manifest: RoomManifest) {
     peers,
     signalingUrl,
     activeIceServers,
+    announcedPeers,
+    webrtcPeers,
     publishVote(vote: VoteRecord) {
       sync?.votes.set(vote.id, vote);
     },
