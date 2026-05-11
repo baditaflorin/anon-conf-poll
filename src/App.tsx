@@ -198,7 +198,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [turnUrl, setTurnUrl] = useState("");
   const [turnUsername, setTurnUsername] = useState("");
   const [turnCredential, setTurnCredential] = useState("");
-  const { votes, questions, status, peers, publishVote, publishQuestion } = useSyncedRoom(manifest);
+  const { votes, questions, status, peers, signalingUrl, activeIceServers, publishVote, publishQuestion } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
   const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
@@ -843,6 +843,20 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       <section className="status-strip" aria-label="Room status">
         <Status icon={<Radio size={18} />} label="Room" value={manifest.roomId} />
         <Status icon={<Wifi size={18} />} label="Mesh" value={`${status} · ${peers} peer(s)`} />
+        {signalingUrl && (
+          <Status
+            icon={<Radio size={18} />}
+            label="Signal"
+            value={signalingUrl.replace("wss://", "").replace("ws://", "")}
+          />
+        )}
+        {activeIceServers.length > 0 && (
+          <Status
+            icon={<Wifi size={18} />}
+            label="TURN"
+            value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
+          />
+        )}
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"

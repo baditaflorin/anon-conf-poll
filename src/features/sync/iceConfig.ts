@@ -55,8 +55,20 @@ export function resetIceServers(): void {
 
 // ── Signaling URL ─────────────────────────────────────────────────────────────
 
+// Signaling servers known to be dead — clear them from localStorage so the
+// build-time default (our self-hosted server) is used instead.
+const DEAD_SIGNALING_SERVERS = [
+  "wss://signaling.yjs.dev",
+  "ws://signaling.yjs.dev",
+];
+
 export function loadSignalingUrl(): string {
-  return localStorage.getItem(SIGNALING_KEY) ?? "";
+  const stored = localStorage.getItem(SIGNALING_KEY) ?? "";
+  if (stored && DEAD_SIGNALING_SERVERS.includes(stored)) {
+    localStorage.removeItem(SIGNALING_KEY);
+    return "";
+  }
+  return stored;
 }
 
 export function saveSignalingUrl(url: string): void {
