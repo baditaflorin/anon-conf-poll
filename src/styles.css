@@ -130,9 +130,54 @@ button.primary {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   padding: 20px clamp(16px, 4vw, 48px) 8px;
+}
+
+.diagnostics {
+  width: min(960px, calc(100vw - 32px));
+  margin: 4px auto 8px;
+  padding: 0 clamp(16px, 4vw, 48px);
+}
+
+.diagnostics > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85em;
+  user-select: none;
+}
+
+.diagnostics > summary::-webkit-details-marker { display: none; }
+.diagnostics > summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.15s ease;
+  margin-right: 4px;
+  font-size: 0.9em;
+}
+.diagnostics[open] > summary::before { transform: rotate(90deg); }
+.diagnostics > summary:hover { color: var(--text); border-color: var(--text); }
+
+.diagnostics-summary-value {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .status {

@@ -843,42 +843,57 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       <section className="status-strip" aria-label="Room status">
         <Status icon={<Radio size={18} />} label="Room" value={manifest.roomId} />
         <Status icon={<Wifi size={18} />} label="Mesh" value={`${status} · ${peers} peer(s)`} />
-        {signalingUrl && (
-          <Status
-            icon={<Radio size={18} />}
-            label="Signal"
-            value={signalingUrl.replace("wss://", "").replace("ws://", "")}
-          />
-        )}
-        {activeIceServers.length > 0 && (
-          <Status
-            icon={<Wifi size={18} />}
-            label="TURN"
-            value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
-          />
-        )}
-        <button
-          className="status"
-          title="Click to re-announce to signaling server and force peer discovery"
-          onClick={forceReannounce}
-          style={{ cursor: "pointer", background: "none", border: "none", padding: 0, textAlign: "left" }}
-        >
-          <Radio size={18} aria-hidden="true" />
-          <div>
-            <span className="status-label">Peers</span>
-            <span className="status-value">
-              seen {announcedPeers} · rtc {webrtcPeers}
-              {reannounceCount > 0 ? ` · re✓${reannounceCount}` : " · tap↺"}
-            </span>
-          </div>
-        </button>
         <Status
           icon={<ShieldCheck size={18} />}
           label="Proofs"
           value={manifest.proofProfile.replaceAll("-", " ")}
         />
-        <Status icon={<Database size={18} />} label="Analytics" value="DuckDB-WASM local" />
       </section>
+
+      <details className="diagnostics">
+        <summary>
+          <span>Diagnostics</span>
+          <span className="diagnostics-summary-value">
+            {webrtcPeers > 0
+              ? `✓ ${webrtcPeers} WebRTC peer${webrtcPeers === 1 ? "" : "s"}`
+              : announcedPeers > 0
+                ? `${announcedPeers} peer${announcedPeers === 1 ? "" : "s"} seen, no WebRTC yet`
+                : "no peers seen yet"}
+          </span>
+        </summary>
+        <div className="diagnostics-grid">
+          {signalingUrl && (
+            <Status
+              icon={<Radio size={18} />}
+              label="Signal"
+              value={signalingUrl.replace("wss://", "").replace("ws://", "")}
+            />
+          )}
+          {activeIceServers.length > 0 && (
+            <Status
+              icon={<Wifi size={18} />}
+              label="TURN"
+              value={activeIceServers.some(s => s.urls.startsWith("turn:") || s.urls.startsWith("turns:")) ? "✓ relay ready" : "STUN only"}
+            />
+          )}
+          <button
+            className="status"
+            title="Click to re-announce to the signaling server and force peer discovery"
+            onClick={forceReannounce}
+            style={{ cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit" }}
+          >
+            <Radio size={18} aria-hidden="true" />
+            <div>
+              <span className="status-label">Peers</span>
+              <span className="status-value">
+                seen {announcedPeers} · rtc {webrtcPeers}
+                {reannounceCount > 0 ? ` · re✓${reannounceCount}` : " · tap↺"}
+              </span>
+            </div>
+          </button>
+          <Status icon={<Database size={18} />} label="Analytics" value="DuckDB-WASM local" />
+        </div>
+      </details>
 
       {toast ? <div className={`toast ${toast.tone}`}>{toast.message}</div> : null}
       {busy ? (

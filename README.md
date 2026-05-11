@@ -40,7 +40,29 @@ C4Context
     Rel(app, stun, "Discovers peers; no poll identities stored")
 ```
 
-More detail lives in `docs/architecture.md` and `docs/adr/`.
+More detail lives in `docs/architecture.md`, `docs/adr/`, and `docs/mesh-architecture.md` (end-to-end signaling + TURN walkthrough).
+
+## Self-host the infrastructure
+
+The browser app is the only thing GitHub Pages serves. The runtime mesh needs three small infrastructure pieces, each in its own repo, each independently deployable, each documented from zero on a fresh VPS:
+
+| Repo | Role | Endpoint the app uses |
+|---|---|---|
+| [signaling-server](https://github.com/baditaflorin/signaling-server) | y-webrtc WebSocket signaling | `wss://YOUR_HOST/ws` |
+| [turn-token-server](https://github.com/baditaflorin/turn-token-server) | Issues short-lived HMAC TURN credentials | `https://YOUR_HOST/credentials` |
+| [coturn-hetzner](https://github.com/baditaflorin/coturn-hetzner) | TURN relay for cross-NAT WebRTC | `turn:YOUR_HOST:3478` (used directly by the browser, not via nginx) |
+
+All three include health endpoints, Prometheus metrics, nginx example configs, and bootstrap scripts. The total cost of running all three on the same Hetzner CX22 is ~4 €/month.
+
+To point this app at your own infrastructure, edit `src/shared/config.ts` (`signalingUrl`) and `src/features/sync/iceConfig.ts` (`loadTurnTokenUrl` default), then rebuild. Or set them at build time:
+
+```sh
+VITE_WEBRTC_SIGNALING=wss://signaling.example.com/ws \
+VITE_TURN_TOKEN_URL=https://turn.example.com/credentials \
+make build
+```
+
+Background on how the mesh actually connects two browsers: [docs/mesh-architecture.md](docs/mesh-architecture.md). Why the default `wss://signaling.yjs.dev` doesn't work (and how the binary-frame bug ate three days of debugging): [docs/postmortem-phase4-mesh-deadlock.md](docs/postmortem-phase4-mesh-deadlock.md).
 
 ## Verified Features
 
