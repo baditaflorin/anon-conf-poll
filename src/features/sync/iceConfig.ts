@@ -88,7 +88,7 @@ export function loadTurnTokenUrl(): string {
   return (
     localStorage.getItem(TOKEN_URL_KEY) ??
     (import.meta.env.VITE_TURN_TOKEN_URL as string | undefined) ??
-    ""
+    "https://turn.0docker.com/credentials"
   );
 }
 
