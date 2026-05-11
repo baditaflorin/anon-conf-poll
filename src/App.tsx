@@ -993,7 +993,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           }}
         >
           <div className="panel-heading">
-            <h2 id="room-controls">Room Control</h2>
+            <h2 id="room-controls">Room</h2>
             <button
               type="button"
               className="icon-button"
@@ -1004,111 +1004,116 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             </button>
           </div>
 
-          <div className="file-drop">
-            <FileUp size={18} aria-hidden="true" />
-            <div>
-              <strong>Import files</strong>
-              <p>
-                Drop or choose CSV, TXT, or JSON for rosters, polls, invites, room links, or saved
-                state.
-              </p>
+          {/* Setup form is only needed when configuring a room, not during a
+              live session. Collapse it by default; auto-open for blank rooms. */}
+          <details className="panel-section" open={manifest.polls.length === 0}>
+            <summary>
+              <Settings size={14} aria-hidden="true" />
+              <span>Edit room setup</span>
+            </summary>
+            <div className="panel-section-body">
+              <div className="file-drop">
+                <FileUp size={18} aria-hidden="true" />
+                <div>
+                  <strong>Import files</strong>
+                  <p>CSV, TXT, or JSON — rosters, polls, invites, saved state.</p>
+                </div>
+                <label className="file-picker">
+                  Choose
+                  <input
+                    aria-label="Import files"
+                    type="file"
+                    accept=".csv,.txt,.json,text/csv,text/plain,application/json"
+                    multiple
+                    onChange={(event) => {
+                      void handleFileInput(event.currentTarget.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div className="button-row">
+                <button type="button" onClick={loadSampleInputs}>
+                  <ClipboardList size={18} aria-hidden="true" />
+                  Sample data
+                </button>
+                <button type="button" onClick={() => void startFresh()}>
+                  <Trash2 size={18} aria-hidden="true" />
+                  Start fresh
+                </button>
+              </div>
+
+              <label>
+                <span>Open another room or invite URL</span>
+                <input
+                  value={urlInput}
+                  onChange={(event) => setUrlInput(event.target.value)}
+                  placeholder="Paste room URL, #room=..., or invite link"
+                />
+              </label>
+              <button type="button" onClick={applyUrlInput}>
+                <Link size={18} aria-hidden="true" />
+                Open link
+              </button>
+
+              <label>
+                <span>Title</span>
+                <input value={roomTitle} onChange={(event) => setRoomTitle(event.target.value)} />
+              </label>
+              <label>
+                <span>Attendees</span>
+                <input
+                  type="number"
+                  min={4}
+                  max={256}
+                  value={attendeeCount}
+                  onChange={(event) => setAttendeeCount(Number(event.target.value))}
+                  onBlur={() => setAttendeeCount(clampAttendeeCount(attendeeCount))}
+                />
+              </label>
+              <label>
+                <span>Roster CSV</span>
+                <textarea
+                  value={rosterInput}
+                  onChange={(event) => setRosterInput(event.target.value)}
+                  placeholder="Paste attendee roster CSV"
+                  rows={4}
+                />
+              </label>
+              {rosterPreview ? (
+                <InferenceSummary
+                  icon={<ClipboardList size={16} />}
+                  title={`${rosterPreview.eligibleRows} eligible attendee(s)`}
+                  confidence={rosterPreview.confidence}
+                  detail={`${rosterPreview.sourceKind} shape · ${rosterPreview.duplicateRows} duplicate · ${rosterPreview.excludedRows} excluded`}
+                  issues={rosterPreview.issues.slice(0, 3).map((issue) => issue.message)}
+                />
+              ) : null}
+              <label>
+                <span>Poll draft</span>
+                <textarea
+                  value={pollInput}
+                  onChange={(event) => setPollInput(event.target.value)}
+                  placeholder="Paste poll text or poll CSV"
+                  rows={4}
+                />
+              </label>
+              {pollPreview ? (
+                <InferenceSummary
+                  icon={<Wand2 size={16} />}
+                  title={`${pollPreview.pollCount} inferred poll(s)`}
+                  confidence={pollPreview.confidence}
+                  detail={pollPreview.optionCounts.map((count) => `${count} options`).join(", ")}
+                  issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
+                />
+              ) : null}
+              <button type="button" className="primary" disabled={Boolean(busy)} onClick={startNewRoom}>
+                <RefreshCw size={18} aria-hidden="true" />
+                Rebuild this room
+              </button>
             </div>
-            <label className="file-picker">
-              Choose
-              <input
-                aria-label="Import files"
-                type="file"
-                accept=".csv,.txt,.json,text/csv,text/plain,application/json"
-                multiple
-                onChange={(event) => {
-                  void handleFileInput(event.currentTarget.files);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
-          </div>
-
-          <div className="button-row">
-            <button type="button" onClick={loadSampleInputs}>
-              <ClipboardList size={18} aria-hidden="true" />
-              Sample data
-            </button>
-            <button type="button" onClick={() => void startFresh()}>
-              <Trash2 size={18} aria-hidden="true" />
-              Start fresh
-            </button>
-          </div>
-
-          <label>
-            <span>Room or invite URL</span>
-            <input
-              value={urlInput}
-              onChange={(event) => setUrlInput(event.target.value)}
-              placeholder="Paste room URL, #room=..., or invite link"
-            />
-          </label>
-          <button type="button" onClick={applyUrlInput}>
-            <Link size={18} aria-hidden="true" />
-            Open link
-          </button>
-
-          <label>
-            <span>Title</span>
-            <input value={roomTitle} onChange={(event) => setRoomTitle(event.target.value)} />
-          </label>
-          <label>
-            <span>Attendees</span>
-            <input
-              type="number"
-              min={4}
-              max={256}
-              value={attendeeCount}
-              onChange={(event) => setAttendeeCount(Number(event.target.value))}
-              onBlur={() => setAttendeeCount(clampAttendeeCount(attendeeCount))}
-            />
-          </label>
-          <label>
-            <span>Roster CSV</span>
-            <textarea
-              value={rosterInput}
-              onChange={(event) => setRosterInput(event.target.value)}
-              placeholder="Paste attendee roster CSV"
-              rows={4}
-            />
-          </label>
-          {rosterPreview ? (
-            <InferenceSummary
-              icon={<ClipboardList size={16} />}
-              title={`${rosterPreview.eligibleRows} eligible attendee(s)`}
-              confidence={rosterPreview.confidence}
-              detail={`${rosterPreview.sourceKind} shape · ${rosterPreview.duplicateRows} duplicate · ${rosterPreview.excludedRows} excluded`}
-              issues={rosterPreview.issues.slice(0, 3).map((issue) => issue.message)}
-            />
-          ) : null}
-          <label>
-            <span>Poll draft</span>
-            <textarea
-              value={pollInput}
-              onChange={(event) => setPollInput(event.target.value)}
-              placeholder="Paste poll text or poll CSV"
-              rows={4}
-            />
-          </label>
-          {pollPreview ? (
-            <InferenceSummary
-              icon={<Wand2 size={16} />}
-              title={`${pollPreview.pollCount} inferred poll(s)`}
-              confidence={pollPreview.confidence}
-              detail={pollPreview.optionCounts.map((count) => `${count} options`).join(", ")}
-              issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
-            />
-          ) : null}
-          <button type="button" className="primary" disabled={Boolean(busy)} onClick={startNewRoom}>
-            <RefreshCw size={18} aria-hidden="true" />
-            New room
-          </button>
-
-          <div className="divider" />
+          </details>
 
           <h3>Invite</h3>
           <textarea
@@ -1408,36 +1413,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               <BarChart3 size={18} aria-hidden="true" />
             </button>
           </div>
-          <div className="button-row">
-            <button type="button" onClick={() => downloadResults("json")}>
-              <Download size={18} aria-hidden="true" />
-              Download JSON
-            </button>
-            <button type="button" onClick={() => void copyResults("json")}>
-              <Copy size={18} aria-hidden="true" />
-              Copy JSON
-            </button>
-            <button type="button" onClick={() => downloadResults("csv")}>
-              <Download size={18} aria-hidden="true" />
-              Download votes CSV
-            </button>
-            <button type="button" onClick={() => void copyResults("csv")}>
-              <Copy size={18} aria-hidden="true" />
-              Copy votes CSV
-            </button>
-            <button type="button" onClick={downloadState}>
-              <Download size={18} aria-hidden="true" />
-              Download state
-            </button>
-            <button type="button" onClick={() => void copyState()}>
-              <Copy size={18} aria-hidden="true" />
-              Copy state
-            </button>
-            <button type="button" onClick={printReport}>
-              <Printer size={18} aria-hidden="true" />
-              Print
-            </button>
-          </div>
+          {/* Show the result first, export options collapsed below. */}
           {analytics ? (
             <div className="duckdb-summary">
               <p>DuckDB {analytics.duckdbVersion}</p>
@@ -1450,6 +1426,52 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           ) : (
             <p className="muted">Run DuckDB for a local SQL summary.</p>
           )}
+
+          {/* All 7 export buttons collapsed behind a single toggle. Surface
+              "Print results" as the primary action — it's the one live
+              audiences actually use. */}
+          <details className="panel-section">
+            <summary>
+              <Download size={14} aria-hidden="true" />
+              <span>Export &amp; print</span>
+            </summary>
+            <div className="panel-section-body export-grid">
+              <button type="button" className="primary" onClick={printReport}>
+                <Printer size={16} aria-hidden="true" />
+                Print results
+              </button>
+              <div className="export-row">
+                <span className="export-row-label">Results JSON</span>
+                <button type="button" className="export-mini" onClick={() => downloadResults("json")} title="Download">
+                  <Download size={14} aria-hidden="true" />
+                </button>
+                <button type="button" className="export-mini" onClick={() => void copyResults("json")} title="Copy">
+                  <Copy size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="export-row">
+                <span className="export-row-label">Votes CSV</span>
+                <button type="button" className="export-mini" onClick={() => downloadResults("csv")} title="Download">
+                  <Download size={14} aria-hidden="true" />
+                </button>
+                <button type="button" className="export-mini" onClick={() => void copyResults("csv")} title="Copy">
+                  <Copy size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="export-row">
+                <span className="export-row-label">Full saved state</span>
+                <button type="button" className="export-mini" onClick={downloadState} title="Download">
+                  <Download size={14} aria-hidden="true" />
+                </button>
+                <button type="button" className="export-mini" onClick={() => void copyState()} title="Copy">
+                  <Copy size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <p className="export-hint">
+                JSON has tallies + provenance. CSV has raw vote rows for spreadsheets. Saved state archives everything in this browser.
+              </p>
+            </div>
+          </details>
         </section>
       </div>
       {debugEnabled ? (

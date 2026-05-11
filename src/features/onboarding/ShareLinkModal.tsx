@@ -6,7 +6,8 @@ import { copyToClipboard } from "../io/downloads";
 /**
  * Shown ONCE right after the user creates a new room. The room URL IS the
  * product — if they don't realize they need to send it to attendees, nothing
- * works. Big text, big copy button, QR for "scan from a slide" use.
+ * works. Single big copy button, optional QR, compact layout that doesn't
+ * dominate the screen even when the URL is ~3 KB (room manifests get long).
  */
 export function ShareLinkModal({
   url,
@@ -16,7 +17,10 @@ export function ShareLinkModal({
   onDismiss: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [showQr, setShowQr] = useState(true);
+  // QR codes for very long URLs become unscannably dense at any reasonable
+  // size. Hide the QR by default past ~1200 chars and let the user opt in.
+  const isDenseUrl = url.length > 1200;
+  const [showQr, setShowQr] = useState(!isDenseUrl);
 
   async function copy() {
     try {
@@ -55,26 +59,43 @@ export function ShareLinkModal({
         </p>
 
         <div className="share-modal-url-row">
-          <code className="share-modal-url">{url}</code>
+          <input
+            type="text"
+            readOnly
+            className="share-modal-url-input"
+            value={url}
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label="Room URL"
+          />
           <button type="button" className="primary share-modal-copy" onClick={() => void copy()}>
             {copied ? <Check size={18} /> : <Copy size={18} />}
-            {copied ? "Copied" : "Copy link"}
+            {copied ? "Copied" : "Copy"}
           </button>
         </div>
+        <p className="share-modal-url-meta">
+          {url.length.toLocaleString()} characters · the room manifest travels in the URL fragment, never sent to a server
+        </p>
 
         <button
           type="button"
           className="ghost share-modal-qr-toggle"
           onClick={() => setShowQr((v) => !v)}
         >
-          <QrIcon size={16} /> {showQr ? "Hide QR" : "Show QR code"}
+          <QrIcon size={16} /> {showQr ? "Hide QR" : "Show QR"}
         </button>
 
         {showQr && (
           <div className="share-modal-qr">
-            <QrCode text={url} size={240} />
+            {isDenseUrl ? (
+              <p className="share-modal-qr-warn">
+                This room URL is long ({url.length.toLocaleString()} chars), so the QR is
+                very dense and may not scan reliably. Sending the link by message or AirDrop
+                is more reliable.
+              </p>
+            ) : null}
+            <QrCode text={url} size={isDenseUrl ? 320 : 220} />
             <p className="share-modal-qr-hint">
-              Project this from a slide or print it on a handout — attendees can scan to join.
+              Project from a slide or print on a handout — attendees can scan to join.
             </p>
           </div>
         )}

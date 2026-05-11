@@ -14,7 +14,8 @@
   --gold: #f5c84b;
   --blue: #315f9b;
   --rose: #b44b5d;
-  --shadow: 0 16px 48px rgb(33 43 37 / 12%);
+  --shadow: 0 4px 18px rgb(33 43 37 / 7%);
+  --shadow-strong: 0 16px 48px rgb(33 43 37 / 12%);
 }
 
 * {
@@ -35,19 +36,30 @@ textarea {
 
 button,
 .icon-link {
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface-strong);
   color: var(--ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-weight: 700;
+  gap: 6px;
+  padding: 6px 11px;
+  font-weight: 600;
+  font-size: 0.9rem;
   text-decoration: none;
   cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+button:hover:not(:disabled),
+.icon-link:hover {
+  border-color: var(--teal);
+}
+
+button.primary:hover:not(:disabled) {
+  background: #0a3a35;
 }
 
 button:disabled {
@@ -72,7 +84,7 @@ button.ghost:hover {
 }
 
 .icon-button {
-  width: 40px;
+  width: 36px;
   padding: 0;
 }
 
@@ -81,7 +93,7 @@ button.ghost:hover {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
-  padding: 20px clamp(16px, 4vw, 48px);
+  padding: 12px clamp(12px, 3vw, 36px);
   border-bottom: 1px solid var(--line);
   background: rgb(255 250 241 / 86%);
   backdrop-filter: blur(12px);
@@ -141,14 +153,15 @@ button.ghost:hover {
 .status-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  padding: 20px clamp(16px, 4vw, 48px) 8px;
+  gap: 10px;
+  padding: 14px clamp(12px, 3vw, 36px) 4px;
 }
 
 .diagnostics {
-  width: min(960px, calc(100vw - 32px));
-  margin: 4px auto 8px;
-  padding: 0 clamp(16px, 4vw, 48px);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 clamp(12px, 3vw, 36px) 4px;
 }
 
 .diagnostics > summary {
@@ -193,13 +206,20 @@ button.ghost:hover {
 .status {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface);
-  padding: 12px;
+  padding: 8px 12px;
   display: grid;
   grid-template-columns: auto 1fr;
   column-gap: 8px;
-  row-gap: 2px;
+  row-gap: 0;
+  font-size: 0.9rem;
+}
+
+.status > div > span:first-child {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .status svg {
@@ -468,15 +488,39 @@ button.ghost:hover {
   align-items: stretch;
 }
 
-.share-modal-url {
+/* Single-line URL input — no wrap, just scrollable horizontally. The full
+   value is in the DOM (selectable, copyable) but visually it's one line. */
+.share-modal-url-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85rem;
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  word-break: break-all;
-  user-select: all;
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.share-modal-url-input:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.share-modal-url-meta {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.share-modal-qr-warn {
+  margin: 0 0 8px;
+  color: var(--rose);
+  font-size: 0.82rem;
+  text-align: center;
+  max-width: 320px;
 }
 
 .share-modal-copy {
@@ -541,8 +585,8 @@ button.ghost:hover {
 .workspace {
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(260px, 340px);
-  gap: 16px;
-  padding: 20px clamp(16px, 4vw, 48px) 48px;
+  gap: 14px;
+  padding: 12px clamp(12px, 3vw, 36px) 36px;
 }
 
 .panel,
@@ -554,10 +598,86 @@ button.ghost:hover {
 }
 
 .panel {
-  padding: 16px;
+  padding: 14px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   align-content: start;
+}
+
+/* Collapsible section inside a panel — used by Room/setup, Results/export.
+   Looks like an unobtrusive disclosure row, not a panel-within-a-panel. */
+.panel-section {
+  margin: 4px 0 0;
+}
+
+.panel-section > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin: 0 -10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  user-select: none;
+}
+.panel-section > summary::-webkit-details-marker { display: none; }
+.panel-section > summary::before {
+  content: "▸";
+  font-size: 0.8em;
+  transition: transform 0.15s ease;
+}
+.panel-section[open] > summary::before { transform: rotate(90deg); }
+.panel-section > summary:hover { color: var(--text); background: var(--surface-strong); }
+
+.panel-section-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Compact export rows inside the Results panel. */
+.export-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.export-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+}
+
+.export-row-label {
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.export-mini {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.export-mini:hover { color: var(--teal); border-color: var(--teal); }
+
+.export-hint {
+  margin: 4px 2px 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .panel-heading {
