@@ -4,6 +4,25 @@ import type { Invite, Poll, RoomManifest } from "./types";
 
 const { compressToEncodedURIComponent, decompressFromEncodedURIComponent } = lzString;
 
+// lz-string's compressToEncodedURIComponent emits an alphabet that includes
+// the '+' character. '+' is technically valid in URL fragments per RFC 3986,
+// but it confuses many real-world URL detectors — most notably WhatsApp, which
+// truncates the linkified URL at the first '+'. Other apps treat '+' as a
+// word boundary or re-encode it as a space (the query-string semantic).
+//
+// We post-process the encoded payload to swap '+' for '_'. '_' is unreserved
+// in RFC 3986 (always safe), and lz-string never emits '_' itself, so the
+// mapping is unambiguous and fully reversible. The decoder swaps '_' back to
+// '+' before handing it to lz-string, which keeps OLD share-links (with '+')
+// working too — old links contain no '_', so the swap is a no-op for them.
+function encodeUrlSafe(input: string): string {
+  return compressToEncodedURIComponent(input).replace(/\+/g, "_");
+}
+
+function decodeUrlSafe(input: string): string | null {
+  return decompressFromEncodedURIComponent(input.replace(/_/g, "+"));
+}
+
 const optionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1)
@@ -56,7 +75,7 @@ export const defaultPolls: Poll[] = [
 ];
 
 export function encodeRoom(manifest: RoomManifest): string {
-  return `room=${compressToEncodedURIComponent(JSON.stringify(manifest))}`;
+  return `room=${encodeUrlSafe(JSON.stringify(manifest))}`;
 }
 
 export function decodeRoom(hash: string): RoomManifest | null {
@@ -68,7 +87,7 @@ export function decodeRoom(hash: string): RoomManifest | null {
     return null;
   }
 
-  const decompressed = decompressFromEncodedURIComponent(encoded);
+  const decompressed = decodeUrlSafe(encoded);
 
   if (!decompressed) {
     return null;
@@ -78,11 +97,11 @@ export function decodeRoom(hash: string): RoomManifest | null {
 }
 
 export function encodeInvite(invite: Invite): string {
-  return compressToEncodedURIComponent(JSON.stringify(invite));
+  return encodeUrlSafe(JSON.stringify(invite));
 }
 
 export function decodeInvite(value: string): Invite {
-  const decompressed = decompressFromEncodedURIComponent(value.trim());
+  const decompressed = decodeUrlSafe(value.trim());
 
   if (!decompressed) {
     throw new Error("Invite code is not valid compressed JSON");
