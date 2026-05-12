@@ -5,14 +5,13 @@ import { encodeInvite } from "../polls/room";
 import { classifyImport } from "./fileRouting";
 
 describe("file import routing", () => {
-  it("detects state, invite, roster, poll, and room inputs", () => {
-    const generated = createGeneratedRoom(4);
+  it("detects state, invite, roster, poll, and room inputs", async () => {
+    const generated = await createGeneratedRoom(4);
     const state = createAppStateSnapshot({
       manifest: generated.manifest,
       activeInvite: generated.invites[0] ?? null,
       organizerInvites: generated.invites,
       rosterInput: "",
-      pollInput: "",
       inviteInput: "",
       selectedOptions: {},
       activity: [],

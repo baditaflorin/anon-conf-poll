@@ -1,4 +1,4 @@
-import type { PollTally, RoomManifest, VerifiedVote } from "../polls/types";
+import type { Poll, PollTally, VerifiedVote } from "../polls/types";
 
 export type DuckDbSummary = {
   rows: PollTally[];
@@ -12,7 +12,7 @@ type QueryRow = {
 };
 
 export async function summarizeWithDuckDB(
-  manifest: RoomManifest,
+  polls: Poll[],
   votes: VerifiedVote[]
 ): Promise<DuckDbSummary> {
   const duckdb = await import("@duckdb/duckdb-wasm");
@@ -62,7 +62,7 @@ export async function summarizeWithDuckDB(
 
     return {
       duckdbVersion,
-      rows: manifest.polls.flatMap((poll) =>
+      rows: polls.flatMap((poll) =>
         poll.options.map((option) => ({
           pollId: poll.id,
           optionId: option.id,

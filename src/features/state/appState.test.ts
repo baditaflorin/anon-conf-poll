@@ -8,14 +8,13 @@ import {
 } from "./appState";
 
 describe("app state snapshot", () => {
-  it("round-trips a setup snapshot through JSON", () => {
-    const generated = createGeneratedRoom(4);
+  it("round-trips a setup snapshot through JSON", async () => {
+    const generated = await createGeneratedRoom(4);
     const snapshot = createAppStateSnapshot({
       manifest: generated.manifest,
       activeInvite: generated.invites[0] ?? null,
       organizerInvites: generated.invites,
       rosterInput: "First Name,Last Name,Email\nAda,Lovelace,ada@example.com",
-      pollInput: "Opening poll: Ship?\n- Yes\n- No",
       inviteInput: "",
       selectedOptions: { "opening-priority": "practical" },
       activity: [{ at: "2026-05-09T10:00:00.000Z", label: "Imported", detail: "Roster" }],
@@ -28,16 +27,11 @@ describe("app state snapshot", () => {
     expect(parsed).toEqual({ ok: true, state: snapshot });
   });
 
-  it("migrates the v0.1 recent-room persistence shape", () => {
-    const generated = createGeneratedRoom(4);
-    const migrated = migrateSavedState({
-      manifest: generated.manifest,
-      invite: generated.invites[0] ?? null,
-      savedAt: "2026-05-09T10:00:00.000Z"
-    });
-
-    expect(migrated?.schemaVersion).toBe(2);
-    expect(migrated?.manifest.roomId).toBe(generated.manifest.roomId);
-    expect(migrated?.activeInvite?.roomId).toBe(generated.manifest.roomId);
+  it("refuses to migrate older saved state versions (v1/v2)", () => {
+    // Older versions had polls in the URL and no host key — silently
+    // migrating would leave the user with a half-broken room. Better to
+    // discard and surface the welcome screen.
+    expect(migrateSavedState({ schemaVersion: 1, manifest: {}, invite: null })).toBeNull();
+    expect(migrateSavedState({ schemaVersion: 2, exportedAt: "x" })).toBeNull();
   });
 });

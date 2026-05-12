@@ -4,6 +4,7 @@ import {
   ClipboardList,
   ClipboardPaste,
   Copy,
+  Crown,
   Database,
   Download,
   FileUp,
@@ -11,6 +12,9 @@ import {
   Heart,
   KeyRound,
   Link,
+  Lock,
+  Pencil,
+  Plus,
   Printer,
   Radio,
   RefreshCw,
@@ -18,13 +22,21 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
-  Wand2,
   Vote,
+  Wand2,
   Wifi,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { summarizeWithDuckDB, type DuckDbSummary } from "./features/analytics/duckdb";
+import { loadHostKey, parseHostKey, saveHostKey, serializeHostKey } from "./features/host/keyStore";
+import {
+  signPhase,
+  signPoll,
+  verifySignedPhase,
+  verifySignedPoll,
+  type Phase
+} from "./features/host/signing";
 import { classifyImport, readTextFiles } from "./features/io/fileRouting";
 import {
   copyToClipboard,
@@ -38,17 +50,18 @@ import {
   encodeInvite,
   encodeRoom,
   inviteBelongsToRoom,
+  makeId,
   roomShareUrl
 } from "./features/polls/room";
 import { tallyVotes } from "./features/polls/tally";
 import type {
   Invite,
-  QuestionRecord,
+  Poll,
   RoomManifest,
   VerifiedQuestion,
-  VerifiedVote,
-  VoteRecord
+  VerifiedVote
 } from "./features/polls/types";
+import type { HostKeyPair } from "./features/proofs/crypto";
 import {
   createAppStateSnapshot,
   parseAppStateSnapshot,
@@ -93,23 +106,45 @@ type RoomSeed = {
   manifest: RoomManifest | null;
   invites: Invite[];
   invite: Invite | null;
+  hostKey: HostKeyPair | null;
+  seedPolls: Poll[];
   roomError?: Extract<SafeRoomResult, { ok: false }>;
 };
-type LoadedRoomSeed = { manifest: RoomManifest; invites: Invite[]; invite: Invite | null };
+
+type LoadedRoomSeed = {
+  manifest: RoomManifest;
+  invites: Invite[];
+  invite: Invite | null;
+  hostKey: HostKeyPair | null;
+  seedPolls: Poll[];
+};
 
 function initialRoom(): RoomSeed {
   if (!window.location.hash.includes("room=")) {
-    return { manifest: null, invites: [], invite: null };
+    return { manifest: null, invites: [], invite: null, hostKey: null, seedPolls: [] };
   }
 
   const decoded = safeDecodeRoomInput(window.location.hash);
 
   if (decoded.ok) {
     const invite = decodeInviteFromHash(window.location.hash);
-    return { manifest: decoded.manifest, invites: [], invite };
+    return {
+      manifest: decoded.manifest,
+      invites: [],
+      invite,
+      hostKey: null,
+      seedPolls: []
+    };
   }
 
-  return { manifest: null, invites: [], invite: null, roomError: decoded };
+  return {
+    manifest: null,
+    invites: [],
+    invite: null,
+    hostKey: null,
+    seedPolls: [],
+    roomError: decoded
+  };
 }
 
 export default function App() {
@@ -122,26 +157,42 @@ export default function App() {
   // Warm the Semaphore zk-SNARK proving artifacts in the background.
   // Without this, the first vote / first question stalls the UI for
   // 10+ seconds while ~hundreds of MB of circuit blobs download.
-  // Doing it once at app load means the user can navigate and pick
-  // their answer while the artifacts arrive.
   useEffect(() => {
     let cancelled = false;
     void import("./features/proofs/semaphore").then(({ preloadSemaphore }) => {
       if (cancelled) return;
-      preloadSemaphore().catch(() => {
-        // Silent — preload is a UX optimisation, not a precondition.
-        // A failure here means the next real proof attempt will hit
-        // the same error in its own try/catch with the right context
-        // for the user.
-      });
+      preloadSemaphore().catch(() => {});
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Check whether a saved session exists (for the "Continue" option on
-  // welcome). Only relevant when the URL doesn't already specify a room.
+  // If the URL has a v2 room manifest, try to load the matching host key
+  // from this browser's storage — that's how we recognise "first browser
+  // to create this room" as the host across reloads.
+  useEffect(() => {
+    if (!bootstrap.manifest || bootstrap.hostKey) {
+      return;
+    }
+    let cancelled = false;
+    void loadHostKey(bootstrap.manifest.roomId).then((kp) => {
+      if (cancelled || !kp) return;
+      // The stored privkey must match the manifest's pubkey to count.
+      if (kp.publicKey === bootstrap.manifest!.hostPubKey) {
+        setBootstrap((prev) =>
+          prev.manifest && prev.manifest.roomId === bootstrap.manifest!.roomId
+            ? { ...prev, hostKey: kp }
+            : prev
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap.manifest, bootstrap.hostKey]);
+
+  // Saved-session probe for the welcome "Continue" option.
   useEffect(() => {
     if (bootstrap.manifest || bootstrap.roomError) {
       return;
@@ -161,37 +212,50 @@ export default function App() {
       if (choice.kind === "restore") {
         const saved = await loadAppState();
         if (saved) {
+          const kp = await loadHostKey(saved.manifest.roomId);
           window.history.replaceState(null, "", `#${encodeRoom(saved.manifest)}`);
           setBootstrap({
             manifest: saved.manifest,
             invites: [],
-            invite: saved.activeInvite
+            invite: saved.activeInvite,
+            hostKey: kp && kp.publicKey === saved.manifest.hostPubKey ? kp : null,
+            seedPolls: []
           });
           return;
         }
-        // Saved session vanished between welcome render and click — fall through to host.
+        // Saved session vanished — fall through to host flow.
       }
 
       if (choice.kind === "join") {
         const decoded = safeDecodeRoomInput(choice.url);
         if (decoded.ok) {
           const invite = decodeInviteFromHash(choice.url);
+          const kp = await loadHostKey(decoded.manifest.roomId);
           window.history.replaceState(null, "", `#${encodeRoom(decoded.manifest)}`);
-          setBootstrap({ manifest: decoded.manifest, invites: [], invite });
+          setBootstrap({
+            manifest: decoded.manifest,
+            invites: [],
+            invite,
+            hostKey: kp && kp.publicKey === decoded.manifest.hostPubKey ? kp : null,
+            seedPolls: []
+          });
         } else {
-          setBootstrap({ manifest: null, invites: [], invite: null, roomError: decoded });
+          setBootstrap({
+            manifest: null,
+            invites: [],
+            invite: null,
+            hostKey: null,
+            seedPolls: [],
+            roomError: decoded
+          });
         }
         return;
       }
 
-      // Host or demo — both create a fresh room. Demo additionally seeds sample data.
-      const next = await createDefaultRoom();
+      // Host or demo — both create a fresh room. Demo seeds sample polls.
+      const next = await createDefaultRoom(choice.kind === "demo" ? demoSeedPolls : []);
       setBootstrap(next);
       setShowShareModal(true);
-      if (choice.kind === "demo") {
-        // Mark for RoomExperience to load sample data after mount.
-        (window as unknown as { __anonPollLoadSample?: boolean }).__anonPollLoadSample = true;
-      }
     } finally {
       setWelcomeBusy(false);
     }
@@ -202,7 +266,7 @@ export default function App() {
       <DamagedRoomScreen
         error={bootstrap.roomError}
         onCreateNew={() => {
-          void createDefaultRoom().then((next) => {
+          void createDefaultRoom([]).then((next) => {
             setBootstrap(next);
             setShowShareModal(true);
           });
@@ -212,9 +276,6 @@ export default function App() {
   }
 
   if (!bootstrap.manifest) {
-    // True cold start: show the welcome decision card instead of silently
-    // auto-generating a room behind a spinner. Wait until we know whether a
-    // saved session exists so the "Continue" option renders accurately.
     if (hasSavedSession === null) {
       return <BootScreen />;
     }
@@ -240,47 +301,49 @@ export default function App() {
   );
 }
 
-async function createDefaultRoom(): Promise<LoadedRoomSeed> {
+async function createDefaultRoom(seedPolls: Poll[]): Promise<LoadedRoomSeed> {
   const { createGeneratedRoom } = await import("./features/proofs/attendees");
-  const generated = createGeneratedRoom(DEFAULT_ATTENDEE_COUNT);
+  const generated = await createGeneratedRoom(DEFAULT_ATTENDEE_COUNT);
+  await saveHostKey(generated.manifest.roomId, generated.hostKey);
   window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
 
   return {
     manifest: generated.manifest,
     invites: generated.invites,
-    invite: generated.invites[0] ?? null
+    invite: generated.invites[0] ?? null,
+    hostKey: generated.hostKey,
+    seedPolls
   };
 }
 
 function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const [manifest, setManifest] = useState(seed.manifest);
+  const [hostKey, setHostKey] = useState<HostKeyPair | null>(seed.hostKey);
   const [organizerInvites, setOrganizerInvites] = useState(seed.invites);
   const [activeInvite, setActiveInvite] = useState<Invite | null>(seed.invite);
   const [attendeeCount, setAttendeeCount] = useState(seed.manifest.attendeeCommitments.length);
   const [roomTitle, setRoomTitle] = useState(seed.manifest.title);
   const [rosterInput, setRosterInput] = useState("");
-  const [pollInput, setPollInput] = useState("");
+  const [pollDraftInput, setPollDraftInput] = useState("");
   const [rosterPreview, setRosterPreview] = useState<RosterPreview | null>(null);
   const [pollPreview, setPollPreview] = useState<PollPreview | null>(null);
   const [inviteInput, setInviteInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const [livePolls, setLivePolls] = useState<Poll[]>([]);
+  const [currentPhase, setCurrentPhase] = useState<Phase>("draft");
   const [verifiedVotes, setVerifiedVotes] = useState<VerifiedVote[]>([]);
   const [verifiedQuestions, setVerifiedQuestions] = useState<VerifiedQuestion[]>([]);
   const [localVotedPollIds, setLocalVotedPollIds] = useState<Set<string>>(new Set());
   const [storageReady, setStorageReady] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [pendingReplay, setPendingReplay] = useState<{
-    roomId: string;
-    votes: VoteRecord[];
-    questions: QuestionRecord[];
-  } | null>(null);
   const [busy, setBusy] = useState<BusyState>(null);
   const [toast, setToast] = useState<Toast>(null);
   const [analytics, setAnalytics] = useState<DuckDbSummary | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [showConnection, setShowConnection] = useState(false);
+  const [showHostControls, setShowHostControls] = useState(false);
   const [iceServers, setIceServers] = useState<IceServer[]>(() => loadIceServers());
   const [signalingInput, setSignalingInput] = useState(() => loadSignalingUrl());
   const [turnTokenInput, setTurnTokenInput] = useState(() => loadTurnTokenUrl());
@@ -290,6 +353,8 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   const {
     votes,
     questions,
+    signedPolls,
+    signedPhase,
     status,
     peers,
     signalingUrl,
@@ -299,11 +364,69 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     reannounceCount,
     forceReannounce,
     publishVote,
-    publishQuestion
+    publishQuestion,
+    publishSignedPoll,
+    removePoll,
+    publishSignedPhase
   } = useSyncedRoom(manifest);
   const debugEnabled = useMemo(() => isDebugEnabled(), []);
 
-  const tallies = useMemo(() => tallyVotes(manifest, verifiedVotes), [manifest, verifiedVotes]);
+  const isHost = hostKey !== null;
+  const isLocked = currentPhase === "voting";
+
+  const tallies = useMemo(() => tallyVotes(livePolls, verifiedVotes), [livePolls, verifiedVotes]);
+
+  // Verify signed polls against the manifest's hostPubKey and surface only
+  // the ones that pass. A signed poll from a non-host (or an edited payload)
+  // is silently dropped — the host re-signs and republishes if they want it.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const verified: Poll[] = [];
+      for (const signed of signedPolls) {
+        if (await verifySignedPoll(manifest.hostPubKey, signed)) {
+          verified.push(signed.poll);
+        }
+      }
+      if (!cancelled) {
+        setLivePolls(verified.sort((a, b) => a.id.localeCompare(b.id)));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest, signedPolls]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!signedPhase) {
+        if (!cancelled) setCurrentPhase("draft");
+        return;
+      }
+      const ok = await verifySignedPhase(manifest.hostPubKey, signedPhase);
+      if (!cancelled) setCurrentPhase(ok ? signedPhase.phase : "draft");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest, signedPhase]);
+
+  // First-time-host seed: if we just created this room with seed polls
+  // (demo flow), push them into the ydoc as signed polls so attendees see
+  // them. Runs once when both hostKey and an empty ydoc are present.
+  useEffect(() => {
+    if (!hostKey || seed.seedPolls.length === 0 || signedPolls.length > 0) {
+      return;
+    }
+    void (async () => {
+      for (const poll of seed.seedPolls) {
+        const signed = await signPoll(hostKey, poll, manifest.roomId);
+        publishSignedPoll(signed);
+      }
+    })();
+    // We intentionally only run this once on first detection of an empty doc.
+  }, [hostKey]);
 
   useEffect(() => {
     void loadAppState().then((saved) => {
@@ -334,127 +457,12 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     inviteInput,
     manifest,
     organizerInvites,
-    pollInput,
     questions,
     rosterInput,
     selectedOptions,
     storageReady,
     votes
   ]);
-
-  useEffect(() => {
-    if (!pendingReplay || pendingReplay.roomId !== manifest.roomId) {
-      return;
-    }
-
-    for (const vote of pendingReplay.votes) {
-      publishVote(vote);
-    }
-
-    for (const question of pendingReplay.questions) {
-      publishQuestion(question);
-    }
-
-    if (pendingReplay.votes.length > 0 || pendingReplay.questions.length > 0) {
-      recordActivity(
-        "State replayed",
-        `${pendingReplay.votes.length} vote(s), ${pendingReplay.questions.length} question(s)`
-      );
-    }
-
-    setPendingReplay(null);
-  }, [manifest.roomId, pendingReplay, publishQuestion, publishVote]);
-
-  function createCurrentSnapshot(): AppStateSnapshot {
-    return createAppStateSnapshot({
-      manifest,
-      activeInvite,
-      organizerInvites,
-      rosterInput,
-      pollInput,
-      inviteInput,
-      selectedOptions,
-      activity,
-      votes,
-      questions
-    });
-  }
-
-  function applyStateSnapshot(snapshot: AppStateSnapshot, label: string, replaceUrl: boolean) {
-    setManifest(snapshot.manifest);
-    setOrganizerInvites(snapshot.organizerInvites);
-    setActiveInvite(snapshot.activeInvite);
-    setAttendeeCount(snapshot.manifest.attendeeCommitments.length);
-    setRoomTitle(snapshot.manifest.title);
-    setRosterInput(snapshot.rosterInput);
-    setPollInput(snapshot.pollInput);
-    setInviteInput(snapshot.inviteInput);
-    setSelectedOptions(snapshot.selectedOptions);
-    setVerifiedVotes([]);
-    setVerifiedQuestions([]);
-    setLocalVotedPollIds(new Set());
-    setAnalytics(null);
-    setActivity(
-      [
-        {
-          at: new Date().toISOString(),
-          label,
-          detail: `${snapshot.manifest.title} (${snapshot.manifest.roomId})`
-        },
-        ...snapshot.activity
-      ].slice(0, 12)
-    );
-    setPendingReplay({
-      roomId: snapshot.manifest.roomId,
-      votes: snapshot.votes,
-      questions: snapshot.questions
-    });
-
-    if (replaceUrl) {
-      window.history.replaceState(null, "", `#${encodeRoom(snapshot.manifest)}`);
-    }
-  }
-
-  useEffect(() => {
-    if (!rosterInput.trim()) {
-      setRosterPreview(null);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      const preview = inferRoster(rosterInput);
-      setRosterPreview(preview);
-
-      if (preview.eligibleRows > 0) {
-        setAttendeeCount(preview.eligibleRows);
-      }
-
-      recordActivity(
-        "Roster inferred",
-        `${preview.eligibleRows} eligible, ${preview.duplicateRows} duplicate, ${preview.excludedRows} excluded`
-      );
-    }, 200);
-
-    return () => window.clearTimeout(timeout);
-  }, [rosterInput]);
-
-  useEffect(() => {
-    if (!pollInput.trim()) {
-      setPollPreview(null);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      const preview = inferPolls(pollInput);
-      setPollPreview(preview);
-      recordActivity(
-        "Poll draft inferred",
-        `${preview.pollCount} poll(s), ${preview.confidence} confidence`
-      );
-    }, 200);
-
-    return () => window.clearTimeout(timeout);
-  }, [pollInput]);
 
   useEffect(() => {
     let cancelled = false;
@@ -469,7 +477,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     void import("./features/proofs/semaphore").then(({ verifyVoteRecord }) => {
       void Promise.all(
         votes.map((voteRecord) =>
-          verifyVoteRecord(manifest, voteRecord).catch((error: unknown) => ({
+          verifyVoteRecord(manifest, livePolls, voteRecord).catch((error: unknown) => ({
             ...voteRecord,
             verified: false,
             reason: sanitizeError(error)
@@ -485,7 +493,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     return () => {
       cancelled = true;
     };
-  }, [manifest, votes]);
+  }, [manifest, livePolls, votes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -518,6 +526,95 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     };
   }, [manifest, questions]);
 
+  function createCurrentSnapshot(): AppStateSnapshot {
+    return createAppStateSnapshot({
+      manifest,
+      activeInvite,
+      organizerInvites,
+      rosterInput,
+      inviteInput,
+      selectedOptions,
+      activity,
+      votes,
+      questions
+    });
+  }
+
+  function applyStateSnapshot(snapshot: AppStateSnapshot, label: string, replaceUrl: boolean) {
+    setManifest(snapshot.manifest);
+    setOrganizerInvites(snapshot.organizerInvites);
+    setActiveInvite(snapshot.activeInvite);
+    setAttendeeCount(snapshot.manifest.attendeeCommitments.length);
+    setRoomTitle(snapshot.manifest.title);
+    setRosterInput(snapshot.rosterInput);
+    setInviteInput(snapshot.inviteInput);
+    setSelectedOptions(snapshot.selectedOptions);
+    setVerifiedVotes([]);
+    setVerifiedQuestions([]);
+    setLocalVotedPollIds(new Set());
+    setAnalytics(null);
+    setActivity(
+      [
+        {
+          at: new Date().toISOString(),
+          label,
+          detail: `${snapshot.manifest.title} (${snapshot.manifest.roomId})`
+        },
+        ...snapshot.activity
+      ].slice(0, 12)
+    );
+
+    if (replaceUrl) {
+      window.history.replaceState(null, "", `#${encodeRoom(snapshot.manifest)}`);
+    }
+
+    // Re-check the host key for this room.
+    void loadHostKey(snapshot.manifest.roomId).then((kp) => {
+      if (kp && kp.publicKey === snapshot.manifest.hostPubKey) {
+        setHostKey(kp);
+      } else {
+        setHostKey(null);
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (!rosterInput.trim()) {
+      setRosterPreview(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const preview = inferRoster(rosterInput);
+      setRosterPreview(preview);
+
+      if (preview.eligibleRows > 0) {
+        setAttendeeCount(preview.eligibleRows);
+      }
+
+      recordActivity(
+        "Roster inferred",
+        `${preview.eligibleRows} eligible, ${preview.duplicateRows} duplicate, ${preview.excludedRows} excluded`
+      );
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [rosterInput]);
+
+  useEffect(() => {
+    if (!pollDraftInput.trim()) {
+      setPollPreview(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const preview = inferPolls(pollDraftInput);
+      setPollPreview(preview);
+    }, 200);
+
+    return () => window.clearTimeout(timeout);
+  }, [pollDraftInput]);
+
   function startNewRoom() {
     if (busy) {
       return;
@@ -527,28 +624,27 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     setAttendeeCount(safeAttendeeCount);
     setBusy({ label: "Generating commitments", detail: "Creating local Semaphore identities." });
     void import("./features/proofs/attendees")
-      .then(({ createGeneratedRoom }) => {
-        const inferredPolls = pollPreview?.polls.filter((poll) => poll.options.length >= 2);
-        const generated = createGeneratedRoom(
+      .then(async ({ createGeneratedRoom }) => {
+        const generated = await createGeneratedRoom(
           safeAttendeeCount,
-          roomTitle.trim() || "Anonymous Conference Poll",
-          inferredPolls && inferredPolls.length > 0 ? inferredPolls : undefined
+          roomTitle.trim() || "Anonymous Conference Poll"
         );
+        await saveHostKey(generated.manifest.roomId, generated.hostKey);
         setManifest(generated.manifest);
+        setHostKey(generated.hostKey);
         setOrganizerInvites(generated.invites);
         setActiveInvite(generated.invites[0] ?? null);
         setSelectedOptions({});
         setLocalVotedPollIds(new Set());
         setVerifiedVotes([]);
         setVerifiedQuestions([]);
-        setPendingReplay(null);
         setAnalytics(null);
         window.history.replaceState(null, "", `#${encodeRoom(generated.manifest)}`);
         recordActivity(
           "Room created",
-          `${generated.manifest.attendeeCommitments.length} invite(s), ${generated.manifest.polls.length} poll(s)`
+          `${generated.manifest.attendeeCommitments.length} invite(s); host key generated`
         );
-        setToast({ tone: "good", message: "Room created with fresh commitments." });
+        setToast({ tone: "good", message: "Room created. You're the host." });
       })
       .catch((error: unknown) => {
         setToast({ tone: "bad", message: sanitizeError(error) });
@@ -640,11 +736,14 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     setLocalVotedPollIds(new Set());
     setVerifiedVotes([]);
     setVerifiedQuestions([]);
-    setPendingReplay(null);
     setAnalytics(null);
     window.history.replaceState(null, "", `#${encodeRoom(decoded.manifest)}`);
     recordActivity("Room link loaded", `${sourceLabel}; ${decoded.manifest.roomId}`);
     setToast({ tone: "good", message: "Room link loaded." });
+
+    void loadHostKey(decoded.manifest.roomId).then((kp) => {
+      setHostKey(kp && kp.publicKey === decoded.manifest.hostPubKey ? kp : null);
+    });
     return true;
   }
 
@@ -716,9 +815,9 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
     }
 
     if (input.kind === "poll") {
-      setPollInput(input.text);
+      setPollDraftInput(input.text);
       recordActivity("Poll file loaded", input.name);
-      setToast({ tone: "good", message: "Poll file loaded." });
+      setToast({ tone: "good", message: "Poll draft loaded — review and save in Host controls." });
       return;
     }
 
@@ -731,25 +830,151 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
   function loadSampleInputs() {
     setRosterInput(sampleRosterCsv);
-    setPollInput(samplePollDraft);
+    setPollDraftInput(samplePollDraft);
     recordActivity("Sample data loaded", "Roster and poll draft examples");
     setToast({ tone: "good", message: "Sample roster and poll draft loaded." });
   }
 
-  // If the welcome screen requested a demo room, load the sample inputs once.
-  useEffect(() => {
-    const w = window as unknown as { __anonPollLoadSample?: boolean };
-    if (w.__anonPollLoadSample) {
-      w.__anonPollLoadSample = false;
-      loadSampleInputs();
+  // ---- host-only actions ----------------------------------------------------
+
+  async function publishDraftedPolls() {
+    if (!hostKey) {
+      setToast({ tone: "bad", message: "Only the host can publish questions." });
+      return;
     }
-  }, []);
+    if (!pollPreview || pollPreview.polls.length === 0) {
+      setToast({ tone: "warn", message: "No polls detected in the draft." });
+      return;
+    }
+    try {
+      setBusy({ label: "Signing questions", detail: "One signature per poll." });
+      const polls = pollPreview.polls.filter((p) => p.options.length >= 2);
+      for (const poll of polls) {
+        const signed = await signPoll(hostKey, poll, manifest.roomId);
+        publishSignedPoll(signed);
+      }
+      recordActivity("Polls published", `${polls.length} poll(s) signed and broadcast to peers`);
+      setToast({ tone: "good", message: `${polls.length} poll(s) published.` });
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addBlankPoll() {
+    if (!hostKey) return;
+    const newPoll: Poll = {
+      id: makeId("poll"),
+      title: "New question",
+      options: [
+        { id: makeId("opt"), label: "Option 1" },
+        { id: makeId("opt"), label: "Option 2" }
+      ]
+    };
+    try {
+      setBusy({ label: "Adding poll", detail: "Signing the new poll." });
+      const signed = await signPoll(hostKey, newPoll, manifest.roomId);
+      publishSignedPoll(signed);
+      recordActivity("Poll added", newPoll.title);
+      setToast({ tone: "good", message: "Blank poll added. Edit it inline." });
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateExistingPoll(updated: Poll) {
+    if (!hostKey) return;
+    try {
+      const signed = await signPoll(hostKey, updated, manifest.roomId);
+      publishSignedPoll(signed);
+      recordActivity("Poll edited", updated.title);
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    }
+  }
+
+  function deletePoll(pollId: string) {
+    if (!hostKey) return;
+    removePoll(pollId);
+    recordActivity("Poll removed", pollId);
+  }
+
+  async function lockForVoting() {
+    if (!hostKey) return;
+    if (livePolls.length === 0) {
+      setToast({ tone: "warn", message: "Add at least one question before locking." });
+      return;
+    }
+    try {
+      setBusy({ label: "Locking room", detail: "Signing the phase transition." });
+      const signed = await signPhase(hostKey, "voting", manifest.roomId);
+      publishSignedPhase(signed);
+      recordActivity("Room locked", "Voting opened to attendees");
+      setToast({ tone: "good", message: "Voting is open." });
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unlockToDraft() {
+    if (!hostKey) return;
+    try {
+      setBusy({ label: "Unlocking room", detail: "Signing the phase transition." });
+      const signed = await signPhase(hostKey, "draft", manifest.roomId);
+      publishSignedPhase(signed);
+      recordActivity("Room unlocked", "Back to draft mode");
+      setToast({ tone: "good", message: "Back to draft — questions are editable again." });
+    } catch (error) {
+      setToast({ tone: "bad", message: sanitizeError(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function exportHostKey() {
+    if (!hostKey) return;
+    const text = serializeHostKey(manifest.roomId, hostKey);
+    downloadTextFile(`${manifest.roomId}-host-key.json`, text, "application/json");
+    recordActivity("Host key exported", "Backup for moving host to another device");
+  }
+
+  async function importHostKey(text: string) {
+    const parsed = parseHostKey(text);
+    if (!parsed.ok) {
+      setToast({ tone: "bad", message: parsed.message });
+      return;
+    }
+    if (parsed.roomId !== manifest.roomId) {
+      setToast({ tone: "bad", message: "Host key file belongs to a different room." });
+      return;
+    }
+    if (parsed.key.publicKey !== manifest.hostPubKey) {
+      setToast({ tone: "bad", message: "Host key does not match this room's host pubkey." });
+      return;
+    }
+    await saveHostKey(parsed.roomId, parsed.key);
+    setHostKey(parsed.key);
+    recordActivity("Host key imported", "This browser is now the host");
+    setToast({ tone: "good", message: "Host key imported. You're the host." });
+  }
+
+  // ---- voting / Q&A ---------------------------------------------------------
 
   async function castVote(pollId: string) {
     const optionId = selectedOptions[pollId];
 
     if (!activeInvite || !optionId) {
       setToast({ tone: "warn", message: "Load an invite and choose an option first." });
+      return;
+    }
+
+    if (!isLocked) {
+      setToast({ tone: "warn", message: "Voting hasn't opened yet — host is still setting up." });
       return;
     }
 
@@ -765,7 +990,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
       });
       const { createVoteRecord, verifyVoteRecord } = await import("./features/proofs/semaphore");
       const voteRecord = await createVoteRecord(manifest, activeInvite, pollId, optionId);
-      const verified = await verifyVoteRecord(manifest, voteRecord);
+      const verified = await verifyVoteRecord(manifest, livePolls, voteRecord);
 
       if (!verified.verified) {
         setToast({ tone: "bad", message: verified.reason ?? "Proof verification failed." });
@@ -839,7 +1064,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
   async function runAnalytics() {
     try {
       setBusy({ label: "Starting DuckDB-WASM", detail: "Loading the local SQL engine." });
-      const summary = await summarizeWithDuckDB(manifest, verifiedVotes);
+      const summary = await summarizeWithDuckDB(livePolls, verifiedVotes);
       setAnalytics(summary);
       recordActivity("DuckDB summary", `${summary.rows.length} result row(s)`);
       setToast({ tone: "good", message: "DuckDB summary refreshed." });
@@ -899,21 +1124,21 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
   async function startFresh() {
     await clearAppState();
-    const generated = await createDefaultRoom();
+    const generated = await createDefaultRoom([]);
     setManifest(generated.manifest);
+    setHostKey(generated.hostKey);
     setOrganizerInvites(generated.invites);
     setActiveInvite(generated.invite);
     setAttendeeCount(generated.manifest.attendeeCommitments.length);
     setRoomTitle(generated.manifest.title);
     setRosterInput("");
-    setPollInput("");
+    setPollDraftInput("");
     setInviteInput("");
     setUrlInput("");
     setSelectedOptions({});
     setVerifiedVotes([]);
     setVerifiedQuestions([]);
     setLocalVotedPollIds(new Set());
-    setPendingReplay(null);
     setAnalytics(null);
     setActivity([]);
     setToast({ tone: "good", message: "Fresh room created and saved state cleared." });
@@ -921,6 +1146,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
 
   const currentInviteCode = activeInvite ? encodeInvite(activeInvite) : "";
   const verifiedQuestionList = uniqueQuestions(verifiedQuestions);
+  const phaseLabel = isLocked ? "Voting open" : "Draft — host setting up";
 
   return (
     <main className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
@@ -959,11 +1185,70 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
           value={humanizeMeshState(status, peers, webrtcPeers)}
         />
         <Status
+          icon={isLocked ? <Vote size={18} /> : <Pencil size={18} />}
+          label="Phase"
+          value={phaseLabel}
+        />
+        <Status
           icon={<ShieldCheck size={18} />}
-          label="Proofs"
-          value={manifest.proofProfile.replaceAll("-", " ")}
+          label={isHost ? "Role" : "Proofs"}
+          value={isHost ? "Host (you)" : manifest.proofProfile.replaceAll("-", " ")}
         />
       </section>
+
+      {/* Phase banner — explains to attendees why voting is closed, or
+          prompts the host to lock when they're ready. */}
+      {!isLocked && (
+        <div className={`phase-banner ${isHost ? "host" : "attendee"}`}>
+          {isHost ? (
+            <>
+              <Pencil size={18} aria-hidden="true" />
+              <span>
+                <strong>You're hosting in draft mode.</strong> Add or edit questions, then click{" "}
+                <em>Lock &amp; open voting</em> when you're ready.
+              </span>
+              <button
+                type="button"
+                className="primary"
+                disabled={Boolean(busy) || livePolls.length === 0}
+                onClick={() => void lockForVoting()}
+              >
+                <Lock size={16} aria-hidden="true" />
+                Lock &amp; open voting
+              </button>
+            </>
+          ) : (
+            <>
+              <RefreshCw size={18} aria-hidden="true" className="spin" />
+              <span>
+                <strong>Host is setting up the questions.</strong> Voting opens when they lock the
+                room.
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {isLocked && isHost && (
+        <div className="phase-banner host locked">
+          <Vote size={18} aria-hidden="true" />
+          <span>
+            <strong>Voting is open.</strong> You can still add a new poll mid-session.
+          </span>
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => void addBlankPoll()}
+            title="Add another poll while voting is open"
+          >
+            <Plus size={16} aria-hidden="true" />
+            Add poll
+          </button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void unlockToDraft()}>
+            <Pencil size={16} aria-hidden="true" />
+            Unlock (back to draft)
+          </button>
+        </div>
+      )}
 
       <details className="diagnostics">
         <summary>
@@ -1054,12 +1339,121 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             </button>
           </div>
 
-          {/* Setup form is only needed when configuring a room, not during a
-              live session. Collapse it by default; auto-open for blank rooms. */}
-          <details className="panel-section" open={manifest.polls.length === 0}>
+          {/* Host controls: edit questions (in draft), add poll (always),
+              lock/unlock, export host key. Only shown when this browser
+              holds the host private key for the current room. */}
+          {isHost && (
+            <details className="panel-section" open={!isLocked && livePolls.length === 0}>
+              <summary>
+                <Crown size={14} aria-hidden="true" />
+                <span>Host controls</span>
+              </summary>
+              <div className="panel-section-body">
+                <p className="host-note">
+                  You're the host of this room because this browser holds the matching key.
+                  Questions and the lock state are signed by you so attendees can verify them.
+                </p>
+
+                {!isLocked && (
+                  <>
+                    <label>
+                      <span>Draft questions (text or CSV)</span>
+                      <textarea
+                        value={pollDraftInput}
+                        onChange={(event) => setPollDraftInput(event.target.value)}
+                        placeholder={`Opening poll: What should we cover?\n- Demos\n- Architecture\n- Q&A`}
+                        rows={5}
+                      />
+                    </label>
+                    {pollPreview ? (
+                      <InferenceSummary
+                        icon={<Wand2 size={16} />}
+                        title={`${pollPreview.pollCount} inferred poll(s)`}
+                        confidence={pollPreview.confidence}
+                        detail={pollPreview.optionCounts
+                          .map((count) => `${count} options`)
+                          .join(", ")}
+                        issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
+                      />
+                    ) : null}
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={Boolean(busy) || !pollPreview || pollPreview.polls.length === 0}
+                        onClick={() => void publishDraftedPolls()}
+                      >
+                        <Send size={16} aria-hidden="true" />
+                        Publish drafted polls
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(busy)}
+                        onClick={() => void addBlankPoll()}
+                      >
+                        <Plus size={16} aria-hidden="true" />
+                        Add blank poll
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {livePolls.length > 0 && (
+                  <div className="host-poll-editor">
+                    <h4>Live questions ({livePolls.length})</h4>
+                    {livePolls.map((poll) => (
+                      <PollEditor
+                        key={poll.id}
+                        poll={poll}
+                        editable={!isLocked}
+                        onChange={(next) => void updateExistingPoll(next)}
+                        {...(!isLocked ? { onDelete: () => deletePoll(poll.id) } : {})}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <div className="divider" />
+
+                <details>
+                  <summary>Host key backup</summary>
+                  <p className="muted">
+                    Export the host key to move the host role to another device, or to back it up.
+                    Anyone with this file can edit questions and lock/unlock the room.
+                  </p>
+                  <div className="button-row">
+                    <button type="button" onClick={exportHostKey}>
+                      <Download size={16} aria-hidden="true" />
+                      Export host key
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </details>
+          )}
+
+          {/* If this browser is NOT the host, allow importing a host key
+              file to take over the host role (e.g. moved devices). */}
+          {!isHost && (
+            <details className="panel-section">
+              <summary>
+                <Crown size={14} aria-hidden="true" />
+                <span>I'm the host (import key)</span>
+              </summary>
+              <div className="panel-section-body">
+                <p className="muted">
+                  If you created this room on another device, paste or upload the exported host key
+                  to take the host role here.
+                </p>
+                <HostKeyImporter onSubmit={(text) => void importHostKey(text)} />
+              </div>
+            </details>
+          )}
+
+          <details className="panel-section">
             <summary>
               <Settings size={14} aria-hidden="true" />
-              <span>Edit room setup</span>
+              <span>Roster &amp; setup</span>
             </summary>
             <div className="panel-section-body">
               <div className="file-drop">
@@ -1140,24 +1534,6 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                   issues={rosterPreview.issues.slice(0, 3).map((issue) => issue.message)}
                 />
               ) : null}
-              <label>
-                <span>Poll draft</span>
-                <textarea
-                  value={pollInput}
-                  onChange={(event) => setPollInput(event.target.value)}
-                  placeholder="Paste poll text or poll CSV"
-                  rows={4}
-                />
-              </label>
-              {pollPreview ? (
-                <InferenceSummary
-                  icon={<Wand2 size={16} />}
-                  title={`${pollPreview.pollCount} inferred poll(s)`}
-                  confidence={pollPreview.confidence}
-                  detail={pollPreview.optionCounts.map((count) => `${count} options`).join(", ")}
-                  issues={pollPreview.issues.slice(0, 3).map((issue) => issue.message)}
-                />
-              ) : null}
               <button
                 type="button"
                 className="primary"
@@ -1165,7 +1541,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                 onClick={startNewRoom}
               >
                 <RefreshCw size={18} aria-hidden="true" />
-                Rebuild this room
+                Rebuild this room (new host key)
               </button>
             </div>
           </details>
@@ -1310,7 +1686,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                         const next = iceServers.filter((_, j) => j !== i);
                         setIceServers(next);
                         saveIceServers(next);
-                        setToast({ tone: "good", message: "ICE server removed. Reload to apply." });
+                        setToast({
+                          tone: "good",
+                          message: "ICE server removed. Reload to apply."
+                        });
                       }}
                     >
                       <X size={14} aria-hidden="true" />
@@ -1383,10 +1762,20 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
         </section>
 
         <section className="poll-grid" aria-label="Polls">
-          {manifest.polls.map((poll) => {
+          {livePolls.length === 0 ? (
+            <div className="poll-card empty">
+              <p className="muted">
+                {isHost
+                  ? "No questions yet — use Host controls to draft or add one."
+                  : "Waiting for the host to publish questions…"}
+              </p>
+            </div>
+          ) : null}
+          {livePolls.map((poll) => {
             const pollTallies = tallies.filter((tally) => tally.pollId === poll.id);
             const total = pollTallies.reduce((sum, tally) => sum + tally.votes, 0);
             const alreadyVoted = localVotedPollIds.has(poll.id);
+            const votingBlocked = !isLocked || alreadyVoted;
 
             return (
               <article className="poll-card" key={poll.id}>
@@ -1406,7 +1795,7 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                           type="radio"
                           name={poll.id}
                           value={option.id}
-                          disabled={alreadyVoted}
+                          disabled={votingBlocked}
                           checked={selectedOptions[poll.id] === option.id}
                           onChange={() =>
                             setSelectedOptions((current) => ({
@@ -1425,11 +1814,15 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                 <button
                   type="button"
                   className="primary"
-                  disabled={alreadyVoted || Boolean(busy)}
+                  disabled={votingBlocked || Boolean(busy)}
                   onClick={() => void castVote(poll.id)}
                 >
                   <Vote size={18} aria-hidden="true" />
-                  {alreadyVoted ? "Vote verified" : "Cast anonymous vote"}
+                  {!isLocked
+                    ? "Voting opens after host locks"
+                    : alreadyVoted
+                      ? "Vote verified"
+                      : "Cast anonymous vote"}
                 </button>
               </article>
             );
@@ -1475,7 +1868,6 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
               <BarChart3 size={18} aria-hidden="true" />
             </button>
           </div>
-          {/* Show the result first, export options collapsed below. */}
           {analytics ? (
             <div className="duckdb-summary">
               <p>DuckDB {analytics.duckdbVersion}</p>
@@ -1489,9 +1881,6 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
             <p className="muted">Run DuckDB for a local SQL summary.</p>
           )}
 
-          {/* All 7 export buttons collapsed behind a single toggle. Surface
-              "Print results" as the primary action — it's the one live
-              audiences actually use. */}
           <details className="panel-section">
             <summary>
               <Download size={14} aria-hidden="true" />
@@ -1579,6 +1968,10 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                 version: appConfig.version,
                 commit: appConfig.commit,
                 roomId: manifest.roomId,
+                hostPubKey: manifest.hostPubKey,
+                isHost,
+                currentPhase,
+                livePollIds: livePolls.map((p) => p.id),
                 roster: rosterPreview
                   ? {
                       sourceKind: rosterPreview.sourceKind,
@@ -1589,34 +1982,154 @@ function RoomExperience({ seed }: { seed: LoadedRoomSeed }) {
                       checksum: rosterPreview.meta.sourceChecksum
                     }
                   : null,
-                polls: pollPreview
-                  ? {
-                      confidence: pollPreview.confidence,
-                      pollCount: pollPreview.pollCount,
-                      checksum: pollPreview.meta.sourceChecksum
-                    }
-                  : null,
                 activity
               },
               null,
               2
             )}
           </pre>
+          {!showHostControls && (
+            <button type="button" onClick={() => setShowHostControls(true)}>
+              Show host controls
+            </button>
+          )}
         </section>
       ) : null}
     </main>
   );
 }
 
-/**
- * Plain-English label for the Mesh / Connection status badge. The previous
- * "connecting · 1 peer(s)" wording was useful for debugging but confusing for
- * first-time users — most won't know what a peer is or why being alone is fine.
- *
- *   peers   = awareness state count (includes self → minimum 1)
- *   webrtc  = number of established WebRTC peer connections
- *   status  = signaling-server WebSocket status
- */
+function PollEditor({
+  poll,
+  editable,
+  onChange,
+  onDelete
+}: {
+  poll: Poll;
+  editable: boolean;
+  onChange: (next: Poll) => void;
+  onDelete?: () => void;
+}) {
+  const [draft, setDraft] = useState(poll);
+
+  useEffect(() => setDraft(poll), [poll]);
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(poll);
+
+  return (
+    <div className="poll-editor">
+      <label>
+        <span>Question</span>
+        <input
+          value={draft.title}
+          disabled={!editable}
+          onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+        />
+      </label>
+      <ul>
+        {draft.options.map((option, index) => (
+          <li key={option.id}>
+            <input
+              value={option.label}
+              disabled={!editable}
+              onChange={(e) => {
+                const nextOptions = [...draft.options];
+                nextOptions[index] = { ...option, label: e.target.value };
+                setDraft({ ...draft, options: nextOptions });
+              }}
+            />
+            {editable && draft.options.length > 2 && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Remove option"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    options: draft.options.filter((_, i) => i !== index)
+                  })
+                }
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {editable && (
+        <div className="button-row">
+          <button
+            type="button"
+            onClick={() =>
+              setDraft({
+                ...draft,
+                options: [
+                  ...draft.options,
+                  { id: makeId("opt"), label: `Option ${draft.options.length + 1}` }
+                ]
+              })
+            }
+          >
+            <Plus size={14} aria-hidden="true" />
+            Add option
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!dirty}
+            onClick={() => onChange(draft)}
+          >
+            Save changes
+          </button>
+          {onDelete && (
+            <button type="button" onClick={onDelete}>
+              <Trash2 size={14} aria-hidden="true" />
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HostKeyImporter({ onSubmit }: { onSubmit: (text: string) => void }) {
+  const [text, setText] = useState("");
+  return (
+    <>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Paste host-key JSON"
+        rows={4}
+      />
+      <div className="button-row">
+        <label className="file-picker">
+          Choose file
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (!file) return;
+              void file.text().then((text) => onSubmit(text));
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="primary"
+          disabled={!text.trim()}
+          onClick={() => onSubmit(text)}
+        >
+          Import host key
+        </button>
+      </div>
+    </>
+  );
+}
+
 function humanizeMeshState(status: SyncStatus, peers: number, webrtc: number): string {
   if (status === "offline") return "Offline · changes sync when reconnected";
   if (webrtc >= 1) {
@@ -1624,7 +2137,6 @@ function humanizeMeshState(status: SyncStatus, peers: number, webrtc: number): s
     return `Connected with ${others} other${others === 1 ? "" : "s"}`;
   }
   if (status === "connecting") return "Looking for others… share the link to invite people";
-  // status === "connected" but no WebRTC peers — i.e. we're online to signaling but alone
   return "Just you here · share the link to invite people";
 }
 
@@ -1779,3 +2291,16 @@ Closing poll: What should we improve next time?
 - Shorter talks
 - More Q&A
 - Deeper examples`;
+
+const demoSeedPolls: Poll[] = [
+  {
+    id: "demo-priority",
+    title: "What should this session optimize for?",
+    options: [
+      { id: "demo-practical", label: "Practical demos" },
+      { id: "demo-architecture", label: "Architecture depth" },
+      { id: "demo-security", label: "Security review" },
+      { id: "demo-qa", label: "Open Q&A" }
+    ]
+  }
+];

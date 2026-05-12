@@ -3,5 +3,5 @@
   "ok": false,
   "recoverable": true,
   "code": "room-manifest-invalid",
-  "fieldIssues": ["attendeeCommitments.0", "proofProfile"]
+  "fieldIssues": ["attendeeCommitments.0", "hostPubKey", "proofProfile", "schemaVersion"]
 }

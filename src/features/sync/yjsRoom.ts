@@ -1,6 +1,7 @@
 import { WebrtcProvider } from "y-webrtc";
 import * as Y from "yjs";
 import { appConfig } from "../../shared/config";
+import type { SignedPhase, SignedPoll } from "../host/signing";
 import type { QuestionRecord, RoomManifest, VoteRecord } from "../polls/types";
 import { loadIceServers, loadSignalingUrl } from "./iceConfig";
 
@@ -8,6 +9,8 @@ export type RoomSync = {
   doc: Y.Doc;
   votes: Y.Map<VoteRecord>;
   questions: Y.Map<QuestionRecord>;
+  polls: Y.Map<SignedPoll>;
+  phase: Y.Map<SignedPhase>;
   provider: WebrtcProvider | null;
   signalingUrl: string;
   iceServers: ReturnType<typeof loadIceServers>;
@@ -88,6 +91,8 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
   const doc = new Y.Doc();
   const votes = doc.getMap<VoteRecord>("votes");
   const questions = doc.getMap<QuestionRecord>("questions");
+  const polls = doc.getMap<SignedPoll>("polls");
+  const phase = doc.getMap<SignedPhase>("phase");
   let provider: WebrtcProvider | null = null;
 
   const signalingUrl = loadSignalingUrl() || appConfig.signalingUrl;
@@ -198,5 +203,5 @@ export function createRoomSync(manifest: RoomManifest): RoomSync {
     provider = null;
   }
 
-  return { doc, votes, questions, provider, signalingUrl, iceServers };
+  return { doc, votes, questions, polls, phase, provider, signalingUrl, iceServers };
 }

@@ -28,13 +28,28 @@ const optionSchema = z.object({
   label: z.string().min(1)
 });
 
-const pollSchema = z.object({
+export const pollSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   options: z.array(optionSchema).min(2)
 });
 
 export const roomManifestSchema = z.object({
+  schemaVersion: z.literal(2),
+  roomId: z.string().min(6),
+  title: z.string().min(1),
+  createdAt: z.string().min(1),
+  attendeeCommitments: z.array(z.string().regex(/^\d+$/)).min(1),
+  hostPubKey: z.string().min(16),
+  proofProfile: z.literal("semaphore-v4-groth16")
+}) satisfies z.ZodType<RoomManifest>;
+
+/**
+ * Legacy v1 manifest shape (polls in the URL, no host pubkey). We still
+ * recognise it on decode so the user can be told the room is too old and
+ * needs to be recreated — see DamagedRoomScreen.
+ */
+export const legacyRoomManifestSchema = z.object({
   schemaVersion: z.literal(1),
   roomId: z.string().min(6),
   title: z.string().min(1),
@@ -42,7 +57,7 @@ export const roomManifestSchema = z.object({
   polls: z.array(pollSchema).min(1),
   attendeeCommitments: z.array(z.string().regex(/^\d+$/)).min(1),
   proofProfile: z.literal("semaphore-v4-groth16")
-}) satisfies z.ZodType<RoomManifest>;
+});
 
 export const inviteSchema = z.object({
   schemaVersion: z.literal(1),
@@ -94,6 +109,38 @@ export function decodeRoom(hash: string): RoomManifest | null {
   }
 
   return roomManifestSchema.parse(JSON.parse(decompressed));
+}
+
+/**
+ * Inspect the URL fragment and return v2 success, legacy v1 detected (so the
+ * UI can show a clear "this room link is too old" message), or null when
+ * nothing is decodable.
+ */
+export function inspectRoom(
+  hash: string
+): { kind: "v2"; manifest: RoomManifest } | { kind: "v1-legacy" } | { kind: "none" } {
+  const rawHash = hash.startsWith("#") ? hash.slice(1) : hash;
+  const params = new URLSearchParams(rawHash);
+  const encoded = params.get("room");
+  if (!encoded) return { kind: "none" };
+
+  const decompressed = decodeUrlSafe(encoded);
+  if (!decompressed) return { kind: "none" };
+
+  let json: unknown;
+  try {
+    json = JSON.parse(decompressed);
+  } catch {
+    return { kind: "none" };
+  }
+
+  const v2 = roomManifestSchema.safeParse(json);
+  if (v2.success) return { kind: "v2", manifest: v2.data };
+
+  const legacy = legacyRoomManifestSchema.safeParse(json);
+  if (legacy.success) return { kind: "v1-legacy" };
+
+  return { kind: "none" };
 }
 
 export function encodeInvite(invite: Invite): string {

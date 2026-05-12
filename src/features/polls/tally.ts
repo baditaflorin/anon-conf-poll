@@ -1,6 +1,6 @@
-import type { PollTally, RoomManifest, VerifiedVote } from "./types";
+import type { Poll, PollTally, VerifiedVote } from "./types";
 
-export function tallyVotes(manifest: RoomManifest, votes: VerifiedVote[]): PollTally[] {
+export function tallyVotes(polls: Poll[], votes: VerifiedVote[]): PollTally[] {
   const uniqueByPollAndNullifier = new Set<string>();
   const counts = new Map<string, number>();
 
@@ -20,7 +20,7 @@ export function tallyVotes(manifest: RoomManifest, votes: VerifiedVote[]): PollT
     counts.set(countKey, (counts.get(countKey) ?? 0) + 1);
   }
 
-  return manifest.polls.flatMap((poll) =>
+  return polls.flatMap((poll) =>
     poll.options.map((option) => ({
       pollId: poll.id,
       optionId: option.id,

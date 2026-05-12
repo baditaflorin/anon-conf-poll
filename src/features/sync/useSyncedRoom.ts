@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IceServer } from "./iceConfig";
+import type { SignedPhase, SignedPoll } from "../host/signing";
 import type { QuestionRecord, RoomManifest, VoteRecord } from "../polls/types";
 import { maybeFetchTurnCredentials } from "./iceConfig";
 import { createRoomSync, type RoomSync } from "./yjsRoom";
@@ -22,6 +23,8 @@ export function useSyncedRoom(manifest: RoomManifest) {
   const syncRef = useRef<RoomSync | null>(null);
   const [votes, setVotes] = useState<VoteRecord[]>([]);
   const [questions, setQuestions] = useState<QuestionRecord[]>([]);
+  const [signedPolls, setSignedPolls] = useState<SignedPoll[]>([]);
+  const [signedPhase, setSignedPhase] = useState<SignedPhase | null>(null);
   const [status, setStatus] = useState<SyncStatus>("connecting");
   const [peers, setPeers] = useState(0);
   const [signalingUrl, setSignalingUrl] = useState("");
@@ -60,10 +63,14 @@ export function useSyncedRoom(manifest: RoomManifest) {
 
     const updateVotes = () => setVotes(Array.from(sync.votes.values()));
     const updateQuestions = () => setQuestions(Array.from(sync.questions.values()));
+    const updatePolls = () => setSignedPolls(Array.from(sync.polls.values()));
+    const updatePhase = () => setSignedPhase(sync.phase.get("current") ?? null);
     const updatePeers = () => setPeers(sync.provider?.awareness.getStates().size ?? 1);
 
     sync.votes.observe(updateVotes);
     sync.questions.observe(updateQuestions);
+    sync.polls.observe(updatePolls);
+    sync.phase.observe(updatePhase);
 
     sync.provider?.on("status", ({ connected }: { connected: boolean }) => {
       setStatus(connected ? "connected" : "connecting");
@@ -86,10 +93,14 @@ export function useSyncedRoom(manifest: RoomManifest) {
 
     updateVotes();
     updateQuestions();
+    updatePolls();
+    updatePhase();
 
     return () => {
       sync.votes.unobserve(updateVotes);
       sync.questions.unobserve(updateQuestions);
+      sync.polls.unobserve(updatePolls);
+      sync.phase.unobserve(updatePhase);
       sync.provider?.awareness.off("change", updatePeers);
       sync.provider?.destroy();
       sync.doc.destroy();
@@ -129,6 +140,8 @@ export function useSyncedRoom(manifest: RoomManifest) {
   return {
     votes,
     questions,
+    signedPolls,
+    signedPhase,
     status,
     peers,
     signalingUrl,
@@ -142,6 +155,15 @@ export function useSyncedRoom(manifest: RoomManifest) {
     },
     publishQuestion(question: QuestionRecord) {
       sync?.questions.set(question.id, question);
+    },
+    publishSignedPoll(signed: SignedPoll) {
+      sync?.polls.set(signed.poll.id, signed);
+    },
+    removePoll(pollId: string) {
+      sync?.polls.delete(pollId);
+    },
+    publishSignedPhase(signed: SignedPhase) {
+      sync?.phase.set("current", signed);
     }
   };
 }

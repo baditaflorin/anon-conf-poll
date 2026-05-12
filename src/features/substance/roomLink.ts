@@ -1,5 +1,10 @@
 import { ZodError } from "zod";
-import { decodeRoom, roomManifestSchema } from "../polls/room";
+import {
+  decodeRoom,
+  inspectRoom,
+  legacyRoomManifestSchema,
+  roomManifestSchema
+} from "../polls/room";
 import type { RoomManifest } from "../polls/types";
 
 export type SafeRoomResult =
@@ -8,7 +13,7 @@ export type SafeRoomResult =
       kind: "room-link";
       ok: false;
       recoverable: true;
-      code: "room-link-damaged" | "room-manifest-invalid";
+      code: "room-link-damaged" | "room-manifest-invalid" | "room-link-legacy";
       message: string;
       suggestion: string;
       fieldIssues: string[];
@@ -23,11 +28,21 @@ export function safeDecodeRoomInput(input: string): SafeRoomResult {
 
   try {
     if (trimmed.startsWith("{")) {
+      const json = JSON.parse(trimmed);
+      // Reject legacy v1 inline JSON explicitly so the host knows to recreate.
+      if (legacyRoomManifestSchema.safeParse(json).success) {
+        return legacy();
+      }
       return {
         kind: "room-link",
         ok: true,
-        manifest: roomManifestSchema.parse(JSON.parse(trimmed))
+        manifest: roomManifestSchema.parse(json)
       };
+    }
+
+    const inspection = inspectRoom(trimmed);
+    if (inspection.kind === "v1-legacy") {
+      return legacy();
     }
 
     const manifest = decodeRoom(trimmed);
@@ -55,6 +70,18 @@ export function safeDecodeRoomInput(input: string): SafeRoomResult {
 
     return damaged("The room link could not be decoded.");
   }
+}
+
+function legacy(): SafeRoomResult {
+  return {
+    kind: "room-link",
+    ok: false,
+    recoverable: true,
+    code: "room-link-legacy",
+    message: "This is an older room link that no longer works with the host-managed format.",
+    suggestion: "Ask the organizer to create a new room and share the fresh link.",
+    fieldIssues: []
+  };
 }
 
 function damaged(message: string): SafeRoomResult {

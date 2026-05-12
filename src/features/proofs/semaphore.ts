@@ -3,6 +3,7 @@ import { Identity } from "@semaphore-protocol/identity";
 import { generateProof, verifyProof } from "@semaphore-protocol/proof";
 import type {
   Invite,
+  Poll,
   QuestionRecord,
   RoomManifest,
   VerifiedQuestion,
@@ -127,9 +128,10 @@ export async function createQuestionRecord(
 
 export async function verifyVoteRecord(
   manifest: RoomManifest,
+  polls: Poll[],
   vote: VoteRecord
 ): Promise<VerifiedVote> {
-  const poll = manifest.polls.find((candidate) => candidate.id === vote.pollId);
+  const poll = polls.find((candidate) => candidate.id === vote.pollId);
   const option = poll?.options.find((candidate) => candidate.id === vote.optionId);
 
   if (!poll || !option) {

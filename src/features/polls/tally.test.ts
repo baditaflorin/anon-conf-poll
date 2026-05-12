@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultPolls } from "./room";
 import { tallyVotes } from "./tally";
-import type { RoomManifest, VerifiedVote } from "./types";
-
-const manifest: RoomManifest = {
-  schemaVersion: 1,
-  roomId: "room-test01",
-  title: "Test",
-  createdAt: "2026-05-08T00:00:00.000Z",
-  polls: [defaultPolls[0]!],
-  attendeeCommitments: ["1", "2", "3", "4"],
-  proofProfile: "semaphore-v4-groth16"
-};
+import type { VerifiedVote } from "./types";
 
 const proof = {
   merkleTreeDepth: 1,
@@ -24,6 +14,7 @@ const proof = {
 
 describe("tallyVotes", () => {
   it("counts only verified votes and ignores duplicate nullifiers per poll", () => {
+    const polls = [defaultPolls[0]!];
     const votes: VerifiedVote[] = [
       {
         id: "vote-1",
@@ -54,7 +45,7 @@ describe("tallyVotes", () => {
       }
     ];
 
-    const tallies = tallyVotes(manifest, votes);
+    const tallies = tallyVotes(polls, votes);
 
     expect(tallies.find((row) => row.optionId === "practical")?.votes).toBe(1);
     expect(tallies.find((row) => row.optionId === "security")?.votes).toBe(0);

@@ -33,13 +33,12 @@ const activityEventSchema = z.object({
 export type ActivityEvent = z.infer<typeof activityEventSchema>;
 
 export const appStateSchema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   exportedAt: z.string().min(1),
   manifest: roomManifestSchema,
   activeInvite: inviteSchema.nullable(),
   organizerInvites: z.array(inviteSchema),
   rosterInput: z.string(),
-  pollInput: z.string(),
   inviteInput: z.string(),
   selectedOptions: z.record(z.string(), z.string()),
   activity: z.array(activityEventSchema),
@@ -49,18 +48,11 @@ export const appStateSchema = z.object({
 
 export type AppStateSnapshot = z.infer<typeof appStateSchema>;
 
-const legacyRecentRoomSchema = z.object({
-  manifest: roomManifestSchema,
-  invite: inviteSchema.nullable(),
-  savedAt: z.string().optional()
-});
-
 export function createAppStateSnapshot(input: {
   manifest: RoomManifest;
   activeInvite: Invite | null;
   organizerInvites: Invite[];
   rosterInput: string;
-  pollInput: string;
   inviteInput: string;
   selectedOptions: Record<string, string>;
   activity: ActivityEvent[];
@@ -68,13 +60,12 @@ export function createAppStateSnapshot(input: {
   questions: QuestionRecord[];
 }): AppStateSnapshot {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     exportedAt: new Date().toISOString(),
     manifest: input.manifest,
     activeInvite: input.activeInvite,
     organizerInvites: input.organizerInvites,
     rosterInput: input.rosterInput,
-    pollInput: input.pollInput,
     inviteInput: input.inviteInput,
     selectedOptions: input.selectedOptions,
     activity: input.activity,
@@ -108,37 +99,14 @@ export function parseUnknownAppState(
   };
 }
 
+/**
+ * Saved state from a previous schema version is discarded — we can't safely
+ * migrate v1 (URL polls, no host key) or v2 (different appState shape) into
+ * the host-managed v3 room model. The UI surfaces a fresh welcome screen.
+ */
 export function migrateSavedState(value: unknown): AppStateSnapshot | null {
   const current = appStateSchema.safeParse(value);
-
-  if (current.success) {
-    return current.data;
-  }
-
-  const legacy = legacyRecentRoomSchema.safeParse(value);
-
-  if (!legacy.success) {
-    return null;
-  }
-
-  return createAppStateSnapshot({
-    manifest: legacy.data.manifest,
-    activeInvite: legacy.data.invite,
-    organizerInvites: [],
-    rosterInput: "",
-    pollInput: "",
-    inviteInput: "",
-    selectedOptions: {},
-    activity: [
-      {
-        at: legacy.data.savedAt ?? new Date().toISOString(),
-        label: "Legacy room restored",
-        detail: "Migrated saved room and invite into the v0.3 state format."
-      }
-    ],
-    votes: [],
-    questions: []
-  });
+  return current.success ? current.data : null;
 }
 
 export function serializeAppState(state: AppStateSnapshot): string {

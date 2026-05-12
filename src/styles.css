@@ -1143,3 +1143,99 @@ textarea {
   border-radius: 4px;
   background: var(--surface, white);
 }
+
+/* Phase banner — sits between the status strip and the workspace.
+   Drives the host vs attendee mode visually so the room state is obvious. */
+.phase-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.phase-banner.host {
+  background: var(--surface-strong, #fff7ed);
+  border: 1px solid var(--accent, #f59e0b);
+}
+
+.phase-banner.host.locked {
+  background: var(--surface-strong, #ecfdf5);
+  border-color: var(--teal, #10b981);
+}
+
+.phase-banner.attendee {
+  background: var(--surface-strong, #eff6ff);
+  border: 1px solid var(--line, #bfdbfe);
+}
+
+.phase-banner > :first-child {
+  flex-shrink: 0;
+}
+
+.phase-banner > span {
+  flex: 1;
+}
+
+.phase-banner button {
+  flex-shrink: 0;
+}
+
+.host-note {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.host-poll-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.host-poll-editor h4 {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.poll-editor {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+}
+
+.poll-editor ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.poll-editor li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.poll-editor li input {
+  width: 100%;
+}
+
+.poll-card.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  border: 1px dashed var(--line);
+  background: transparent;
+}

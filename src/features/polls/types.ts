@@ -13,13 +13,19 @@ export type Poll = {
   options: PollOption[];
 };
 
+/**
+ * Schema v2: polls are no longer in the URL — they live in the room's Yjs
+ * ydoc, signed by the host. The URL carries the room "bones" plus the host
+ * public key so any peer can verify host-signed actions (poll edits, phase
+ * transitions). See features/host/signing.ts for the signed payload shape.
+ */
 export type RoomManifest = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   roomId: string;
   title: string;
   createdAt: string;
-  polls: Poll[];
   attendeeCommitments: string[];
+  hostPubKey: string;
   proofProfile: ProofProfile;
 };
 
@@ -33,6 +39,7 @@ export type Invite = {
 export type GeneratedRoom = {
   manifest: RoomManifest;
   invites: Invite[];
+  hostKey: { publicKey: string; privateKey: string };
 };
 
 export type VoteRecord = {
