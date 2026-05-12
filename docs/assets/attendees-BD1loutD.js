@@ -1,0 +1,2 @@
+import{n as e,t}from"./index-T1RUijW5.js";import{t as n}from"./dist-BgqMFWEu.js";async function r(r=12,i=`Anonymous Conference Poll`){let a=t(`room`),o=Array.from({length:r},()=>new n).map(e=>({schemaVersion:1,roomId:a,privateKey:e.export(),commitment:e.commitment.toString()})),s=await e();return{manifest:{schemaVersion:2,roomId:a,title:i,createdAt:new Date().toISOString(),attendeeCommitments:o.map(e=>e.commitment),hostPubKey:s.publicKey,proofProfile:`semaphore-v4-groth16`},invites:o,hostKey:s}}export{r as createGeneratedRoom};
+//# sourceMappingURL=attendees-BD1loutD.js.map
