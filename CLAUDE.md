@@ -1,77 +1,651 @@
-# Notes for Claude
+# Fleet context — drop-in brief for AI agents
 
-Short briefing for future Claude sessions working on this repo. Read this before debugging anything mesh / WebRTC / signaling related.
+This file is the **canonical** cold-start brief for any AI agent
+working inside a baditaflorin fleet service repo. It is maintained in
+`services-registry/CLAUDE.md` (the registry is the catalog) and
+propagated to every fleet repo via `fleet-runner inject`.
 
-## What this app is
+If you find a stale copy that differs from this one, the registry copy
+wins — refresh and re-propagate, don't fork it.
 
-A GitHub-Pages-hosted SPA for anonymous live polling. Two parts:
+Per-service specifics (port, mesh, slug, version, category) live in
+the repo's own `service.yaml` + `deploy.yaml` + `README.md`. This file
+is intentionally generic — it explains the *fleet*, not any one
+service.
 
-- **Frontend** (`src/`) — React + Yjs CRDT + Semaphore zero-knowledge proofs + y-webrtc for transport.
-- **Self-hosted infra** on `turn.0docker.com` (Hetzner box) — three Docker services: signaling, TURN credential issuer, coturn TURN relay. Sources live in `/opt/turn/{signaling,turn-token-server,coturn-hetzner}/` on the server.
+**Building a new service?** See
+[`services-registry/SERVICE-TEMPLATE.md`](SERVICE-TEMPLATE.md) — the
+canonical per-service scaffold (file-by-file templates for `main.go`,
+`service.yaml`, `Dockerfile`, etc., plus a paste-ready cold-start
+prompt you can feed Claude / ChatGPT / Gemini). Propagated to every
+fleet repo next to this file.
 
-See `docs/mesh-architecture.md` for the full data flow.
+## Fleet at a glance
 
-## Gotchas that have already cost real time
+~220 service repos under `github.com/baditaflorin/*`. The canonical
+catalog is `services-registry/services.json`; the canonical
+conventions doc is `services-registry/FLEET.md` — **read it first**
+for any fleet-wide task.
 
-### 1. Signaling forwards must be TEXT frames
+### Reading the registry — fetch a slice, not the full blob
 
-In `/opt/turn/signaling/server.js`, when re-broadcasting a `publish` message, **send a string, not a Buffer**:
+`services.json` is ~280 KB / ~250 entries / ~26 fields each. If you
+only need IDs, names, ports, TRL, or URLs, **fetch a slice instead**
+— it's the same `raw.githubusercontent.com` path with a different
+filename. Sized for AI agents on a token budget.
 
-```js
-const text = typeof raw === "string" ? raw : raw.toString("utf8");
-peer.send(text); // ✅ text frame, browser JSON.parses it
-peer.send(raw); // ❌ binary frame, browser silently drops it
+| URL suffix                | shape                                                    | size  | use when |
+|---------------------------|----------------------------------------------------------|-------|----------|
+| `services.ids.json`       | `["a11y-quick", …]`                                      | ~5 KB | "what services exist?" |
+| `services.names.json`     | `[{id, name}]`                                           | ~13 KB | pickers / menus |
+| `services.minimal.json`   | `[{id, name, mesh, kind, category, language, trl, url}]`| ~44 KB | catalog overview |
+| `services.urls.json`      | `[{id, url, health_url, example_path, auth_help}]`      | ~63 KB | building Open / smoke links |
+| `services.trl.json`       | `[{id, trl, trl_ceiling, trl_assessed_at, …}]`          | ~31 KB | TRL audits |
+| `services.ports.json`     | `[{id, host_port, container_port}]`                     | ~12 KB | port allocation / conflict checks |
+| `services.deploy.json`    | `[{id, mesh, kind, runtime, language, repo_url}]`       | ~40 KB | fleet-runner deploy targeting |
+
+Base URL: `https://raw.githubusercontent.com/baditaflorin/services-registry/main/<file>`.
+
+Only fall back to the full `services.json` when you need fields the
+slices don't carry (auth surface details, vhost knobs, descriptions).
+Slices are derived — never edit them; edit `services.json` /
+`overrides.json` and run `python3 bin/generate.py`.
+
+Every entry in the registry has three orthogonal classifying axes.
+Don't conflate them — agent tooling gates behavior on `kind`, not on
+mesh.
+
+### Axis 1 — `kind` (what shape of deployable)
+
+| `kind`      | What it is                                  | Has port? | `/health`? | Workspace on LXC? | Bumpable version? | Counted in `fleet-runner health` / `smoke` / `deploy`? |
+|-------------|---------------------------------------------|-----------|------------|-------------------|--------------------|--------------------------------------------------------|
+| `container` | Docker service on the dockerhost            | yes       | yes        | yes               | yes                | yes                                                    |
+| `static`    | Static GitHub Pages site                    | no        | no         | no                | no                 | **no** — has its own `fleet-runner pages-audit`        |
+
+If this repo's `service.yaml` (or registry entry) says `kind: static`,
+**stop looking for a Dockerfile, a port, or Go code**. Pages services
+are HTML/CSS/JS published by GitHub Pages CI — there is no container
+to deploy and no `/health` to probe.
+
+### Axis 2 — `mesh` (which network + auth domain)
+
+| `mesh`       | Domain pattern         | Auth                                                                       | Typical contents                       |
+|--------------|------------------------|----------------------------------------------------------------------------|----------------------------------------|
+| `mesh-0exec` | `<slug>.0exec.com`     | `?api_key=…` or `X-API-Key` header — keystore-gated                        | proxy, search, ocr, security           |
+| `mesh-0crawl`| `<slug>.0crawl.com`    | `Authorization: Bearer` / `X-API-Key` / `?api_key=…` — keystore-gated (same auth surface as 0exec) | domains, recon, web-analysis           |
+| `mesh-pages` | `*.github.io` / custom | none (static)                                                              | dashboards, catalogs, browser-only WASM apps |
+
+Both container meshes are gated by the **same** keystore (see auth
+section below). One revoke = killed everywhere. The 0crawl path-token
+shape is preserved as a backwards-compat alias and feeds into the
+same `auth_request` flow on the nginx side.
+
+### Axis 3 — `runtime` (how it's started)
+
+| `runtime`     | What it means                                             |
+|---------------|-----------------------------------------------------------|
+| `compose`     | Default for `kind: container`. Docker-compose on the dockerhost; deploy = `docker compose pull && up -d` |
+| `systemd`     | Reserved — a service unit on a host; deploy = `systemctl restart` |
+| `binary`      | Reserved — a static binary run by hand or by a launcher    |
+| `k8s`         | Reserved — managed by a kube manifest                      |
+| `github-pages`| Default for `kind: static`. Built and served by GitHub Pages CI |
+| `external`    | Reserved — runs outside the fleet, included for reference only |
+
+`runtime` is orthogonal to `language`. A Go service might be `runtime: compose` today and `runtime: systemd` tomorrow without re-classifying it as a different language or kind. `fleet-runner deploy` dispatches on `runtime`.
+
+### Axis 4 — `language` (primary implementation)
+
+| `language` | When to use it                                                 |
+|------------|----------------------------------------------------------------|
+| `go`       | Default for `kind: container` in this fleet                    |
+| `node`     | Node.js services (a handful of proxies + Bing/Duck SERP scrapers) |
+| `python`   | Python services (currently 1: `python-proxy`)                  |
+| `c`        | C services (currently 1: `c-proxy`)                            |
+| `rust`     | Reserved for future use                                        |
+| `html`     | Default for `kind: static` — plain HTML/CSS/JS Pages sites     |
+| `wasm`     | Static Pages site whose primary payload is a WASM binary       |
+| `other`    | Anything that doesn't fit                                      |
+
+`fleet-runner --filter language=go converge` (or `--filter
+kind=container,language=go update-dep …`) narrows bulk operations so
+a Go-only dep bump never touches a Node, Python, or static service.
+
+Look at `service.yaml` in this repo to see which axes apply.
+
+## TRL — technology readiness level
+
+Every `services.json` entry may carry a `trl` field 1–9:
+
+| TRL | Band         | Meaning                                                              |
+|-----|--------------|----------------------------------------------------------------------|
+| 1–3 | toy          | single regex / no tests. Don't depend on it.                         |
+| 4–5 | developing   | curated lists, multi-step logic, partial tests.                      |
+| 6–7 | real         | RFC-compliant parsing, evidence trails, real test coverage.          |
+| 8–9 | production   | battle-tested, cross-checks, SLA-grade.                              |
+
+`trl_ceiling` marks services that **structurally cannot** advance
+further (e.g. needs a browser engine, needs paid threat intel).
+`trl_assessed_at` older than ~90 days is stale — re-audit.
+
+## Key sibling repos
+
+| Repo                  | Role                                                                           | Visibility |
+|-----------------------|--------------------------------------------------------------------------------|------------|
+| `services-registry`   | canonical catalog (services.json + FLEET.md + this file)                       | PUBLIC     |
+| `go-common`           | shared Go lib — SSRF-safe HTTP, jsbundle recovery, **apikey client**, ua, middleware | PUBLIC |
+| `go-apikey-service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`           | varies     |
+| `go-catalog-service`  | renders services.json into `catalog.0exec.com`                                 | PRIVATE    |
+| `go_fleet_runner`     | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)              | PRIVATE    |
+| `0crawl-platform`     | nginx vhost templates (also embedded in fleet-runner)                          | PRIVATE    |
+| `fleet-state`         | live operational state, runbooks, SSH topology                                 | PRIVATE    |
+
+## Auth — both container meshes use the **same** keystore (`go-apikey-service`)
+
+**The keystore is the fleet's single point of compromise.** Treat it
+like a CA root: every `0exec` and `0crawl` service trusts whatever it
+says. If this repo is on `mesh-pages` (i.e. `kind: static`), the
+keystore does not apply — skip this section.
+
+Three canonical request shapes (every mesh, every service):
+
+  1. `Authorization: Bearer <key>` — production canonical, what every SDK uses.
+  2. `X-API-Key: <key>` — legacy header alias, same handler.
+  3. `?api_key=<key>` — demo / browser-playground only (key leaks in logs).
+
+A fourth legacy shape, `https://<slug>.0crawl.com/t/<token>/...`, **was
+deprecated on 2026-05-14**. The gateway returns **410 Gone** with
+`Location: /<rest>?api_key=<token>` and a `Deprecation` header for any
+caller still using it. After one deprecation cycle (~2026-06-14) the
+410 block will be removed; `/t/<anything>` will return plain 404.
+
+Request flow at the gateway:
+
+1. **nginx vhost** captures the key into `$api_key_in` (Bearer regex →
+   X-API-Key header → ?api_key query, in that order).
+2. **Static fallback** — if `$api_key_in` matches the universal demo
+   key (`$default_token`, from `/etc/nginx/conf.d/_default_token.conf`),
+   accept immediately and set `X-Auth-User: demo`. Survives keystore
+   outages for the public demo path. The default token is rate-limited
+   to 1 req/s and ~60 req/h per IP at this layer.
+3. Otherwise nginx POSTs `X-Verify-Key: $api_key_in` to the keystore's
+   `/verify` via `auth_request`.
+4. Keystore checks SQLite → returns 200 + `X-Auth-User` / `X-Auth-Scope`,
+   or 401.
+5. On 200, nginx forwards the original request to the service container
+   with `X-Auth-*` headers AND `X-API-Key: $api_key_in` populated, so
+   the upstream `middleware.TokenAuthKeystore` sees a positive auth
+   signal regardless of which gateway auth path was taken.
+
+**Services do not call the keystore themselves** — nginx already gated
+the request. Trust the gateway-injected `X-Auth-*` headers. If you
+genuinely need verification inside a service (admin tooling, internal
+RPC), use the canonical clients — never handroll HTTP calls:
+
+```go
+// Middleware (preferred — gateway header fast-path + keystore fallback + Cache + fail-closed 503):
+import "github.com/baditaflorin/go-common/middleware"   // ≥ v0.7.0
+// Direct client (only for non-HTTP-handler code):
+import "github.com/baditaflorin/go-common/apikey"
+c := apikey.New() // reads APIKEY_SERVICE_URL + APIKEY_SERVICE_ADMIN_TOKEN
+verifier := apikey.NewCache(c) // 15-min positive cache, no negative cache
+result, err := verifier.Verify(ctx, userKey)
 ```
 
-This bug looked exactly like "WebRTC fails to connect across NATs" — the announce delivers (server logs `delivered=1`), but the receiver never generates an SDP offer because y-webrtc's `switch(m.type)` falls through silently on a Blob.
+Keystore outage behaviour (designed-in graceful degradation):
+- **Static fallback** in nginx keeps the public demo key working.
+- **`apikey.Cache`** in each service keeps recently-verified callers
+  working ~15 min.
+- **Snapshot data** in `fleet-state/state/snapshot.json` flags the
+  keystore as BROKEN once `/health` fails — that's the alert.
+- **Recovery procedure**: private `fleet-state/RUNBOOK.md` under
+  "keystore outage".
 
-Full postmortem: `docs/postmortem-phase4-mesh-deadlock.md`. Don't repeat this.
+The admin token (`X-Admin-Token` on `/issue`, `/revoke`, `/list`,
+`/purge`) is stored as `ADMIN_TOKEN` on the keystore container and
+read by clients from `APIKEY_SERVICE_ADMIN_TOKEN`. Rotation playbook:
+private `fleet-state/OPS.md`.
 
-### 2. The y-webrtc default signaling server is dead
+## Auth — `mesh-0crawl` legacy `/t/<token>/` shape (DEPRECATED)
 
-`wss://signaling.yjs.dev` (the library default) is a Heroku app whose DNS no longer resolves. If you see "Mesh connecting · 1 peer(s)" forever, **first** check what signaling URL is actually being used — `loadSignalingUrl() || appConfig.signalingUrl` in `yjsRoom.ts`. The production default in `src/shared/config.ts` is `wss://turn.0docker.com/ws`. Users may have a stale value in `localStorage["anon-conf-poll:signalingUrl"]`; `iceConfig.ts` has a `DEAD_SIGNALING_SERVERS` migration that clears known-dead values automatically.
+Sunset on 2026-05-14. The gateway returns **410 Gone** with
+`Location: /<rest>?api_key=<token>` and `Deprecation: version="v1"`.
+Any SDK or client still using `/t/<token>/...` should follow the
+`Location` header to the canonical shape. The 410 block itself will
+be removed in the following deprecation cycle; after that
+`/t/<anything>` returns 404.
 
-### 3. TURN credentials are auto-fetched from `https://turn.0docker.com/credentials`
+Defense in depth: `go-common/middleware` v0.11.0 dropped path-token
+extraction from `extractToken`, so even a caller bypassing the gateway
+and hitting an upstream container directly with `/t/<token>/...` will
+not be authenticated. The only paths that work are the three canonical
+auth shapes documented above.
 
-This is set as the default in `iceConfig.ts`'s `loadTurnTokenUrl()`. The token server issues HMAC-signed credentials valid for 1 hour. **Always fetch fresh** — don't cache credentials past their TTL or coturn will reject Allocate requests with 401.
+## `go-common` packages — use these, don't reinvent
 
-### 4. coturn is `network_mode: host`
+| Package      | Import path                                       | Purpose                                                 |
+|--------------|---------------------------------------------------|---------------------------------------------------------|
+| safehttp     | `github.com/baditaflorin/go-common/safehttp`      | SSRF-safe HTTP client, DNS-rebind guard                 |
+| ua           | `github.com/baditaflorin/go-common/ua`            | Standard User-Agent builder                             |
+| jsbundle     | `github.com/baditaflorin/go-common/jsbundle`      | source-map recovery for scanning JS bundles             |
+| apikey       | `github.com/baditaflorin/go-common/apikey`        | keystore client (`Verify`, `Cache`, admin endpoints)    |
+| middleware   | `github.com/baditaflorin/go-common/middleware`    | `TokenAuthKeystore` HTTP middleware (≥ v0.7.0)          |
 
-It binds directly to the Proxmox host's interface (no Docker port mapping). External IP `176.9.123.221` for `--external-ip`. Port range 49152–65535 for relay allocations. If you see coturn logs with `remote 127.0.0.1` for sessions, those are the loopback healthcheck — ignore them. Real external clients will show their public IP.
+```go
+import (
+    "github.com/baditaflorin/go-common/safehttp"
+    "github.com/baditaflorin/go-common/ua"
+)
+client := safehttp.NewClient(
+    safehttp.WithTimeout(10*time.Second),
+    safehttp.WithUserAgent(ua.Build(ServiceID, Version)),
+)
+// Errors: safehttp.ErrBlocked, safehttp.ErrInvalidScheme, safehttp.ErrMissingHost
+u, err := safehttp.NormalizeURL(rawInput)
+```
 
-### 5. iOS Safari sends close(1001) when backgrounded
+## Service conventions (required for fleet-runner compatibility)
 
-If you see frequent disconnect/reconnect cycles in the signaling logs (`code=1001 reason=(none)`), that's the user switching apps on their phone. lib0/websocket auto-reconnects within ~270ms and y-webrtc re-announces. This is normal and not a bug. Don't waste time investigating it.
+- **Port**: from `PORT` env; fallback to a build-time constant; must
+  match `service.yaml`, compose, and `deploy.yaml`.
+- **Health**: `GET /health` → `{"status":"ok","service":"<id>","version":"<ver>"}`.
+- **Version**: `GET /version` → `{"version":"<ver>"}`.
+- **Metrics**: `GET /metrics` (Prometheus).
+- **Gateway health**: `GET /_gw_health` is added by the nginx
+  template, not by the service — don't re-implement.
+- **User-Agent**: `ua.Build(ServiceID, Version)`.
+- **Docker image**: `ghcr.io/baditaflorin/<id>:<version>` (no `v`
+  prefix on the tag).
+- **Tagging**: `git tag <version>` (no `v` prefix), e.g. `1.2.3`.
+- **service.yaml** must keep: `id`, `name`, `version`, `port`,
+  `category`, `health` block, `test` block.
 
-### 6. Two-tab BroadcastChannel can mask cross-device bugs
+## `overrides.json` — per-service patches and bulk rules
 
-Y-webrtc uses a BroadcastChannel for same-origin same-browser-tabs as a fast path that skips WebRTC entirely. Opening two tabs on the same desktop will "work" via BroadcastChannel even if WebRTC is completely broken. **Always test with two different browsers (or one browser + one phone) when verifying mesh connectivity changes.**
+The catalog is `services.json` (auto-derived). Per-service hand-curated
+patches live in `services-registry/overrides.json`. Two shapes coexist:
 
-## Debugging mesh issues — the right order
+**Per-slug patches** (current shape, unchanged):
+```json
+{
+  "python-proxy": { "proxy_read_timeout": "300s", "trl": 6 },
+  "node-search-bing": { "vhost": { "proxy_buffering": "off" } }
+}
+```
 
-1. Open DevTools console on both devices. Look for `[sync]` and `[ice]` log lines (they're plentiful by design).
-2. SSH to `root@176.9.123.221` and run `docker logs -f signaling-signal-1`. Have both devices on the page. You should see:
-   - Two `CONNECT total=2` lines (one per device)
-   - Two `subscribe` lines for the same topic
-   - Two `publish dataType=announce` (the second one should show `delivered=1`)
-   - Within a few seconds, **multiple `publish dataType=signal`** lines flying both ways. **This is the diagnostic.** If `dataType=signal` never appears, WebRTC negotiation is broken — that's the bug we hit in phase 4.
-3. Check coturn: `docker logs --tail=50 coturn-hetzner-coturn-1`. Look for `username=<timestamp>` sessions with `rp=N, rb=N` showing nonzero bytes. If only `username=<>` sessions exist, no TURN auth attempts are happening (browser is using STUN/host only — that's fine if it works).
-4. The status badge in the app shows `Peers: seen N · rtc N · tap↺`. `seen` = peers announced via signaling. `rtc` = WebRTC connections established. If `seen ≥ 1` but `rtc = 0`, ICE is failing. If `seen = 0`, signaling itself isn't delivering announces.
+**Bulk rules** (new, via reserved `$rules` key):
+```json
+{
+  "$rules": [
+    {
+      "name": "phone-extractor-san-cert",
+      "match": { "mesh": "0crawl", "ids": ["a11y-quick", "broken-links", "…"] },
+      "patch": { "cert_domain": "phone-extractor.0crawl.com" },
+      "why":   "46 vhosts share phone-extractor's SAN cert"
+    }
+  ]
+}
+```
 
-## Deploying changes
+Match clauses: any of `ids` (explicit list), `mesh`, `kind`, `language`,
+`runtime`, `category` — combined with all-of semantics. Rules apply in
+declaration order; per-slug entries win. Use rules to encode "47 services
+share this cert_domain" as one line instead of 47.
 
-- **Frontend:** `cd ~/Documents/GITHUB_PROJECTS/anon-conf-poll && npm run build && git add docs/ && git commit && git push`. GitHub Pages auto-deploys from the `docs/` directory. Takes 1–2 minutes to propagate. Hard-refresh both devices.
-- **Signaling server:** edit `/tmp/signaling-server.js` locally → `scp` to `root@176.9.123.221:/opt/turn/signaling/server.js` → `ssh … 'cd /opt/turn/signaling && docker compose build signal && docker compose up -d signal'`.
-- **TURN token server / coturn:** same pattern, paths `/opt/turn/{turn-token-server,coturn-hetzner}/`. coturn doesn't need a rebuild after config-only changes — just `docker compose restart coturn`.
+**Audit surface** — never grep overrides by hand:
 
-## Repo conventions
+```
+fleet-runner overrides list   [--filter mesh=0crawl] [--key cert_domain]
+fleet-runner overrides explain <slug>      # full breakdown per key + source
+fleet-runner overrides audit                # stale slugs, unused rules, key adoption counts
+```
 
-- `docs/` is both the GitHub-Pages publish root and the human documentation directory. Documentation goes in `docs/*.md`; built JS goes in `docs/assets/`.
-- Postmortems are numbered: `docs/postmortem-phase{N}-{slug}.md`. Add new ones rather than editing old ones.
-- Version is bumped in `package.json` (drives the version string shown in the app header). Bump for any user-visible release.
+`fleet-runner converge` also surfaces overrides drift (stale per-slug
+entries that reference removed services; rules with no matching
+service).
 
-## Things deliberately NOT done
+## fleet-runner
 
-- No service worker / offline cache. Hard refresh always gets the latest build.
-- No analytics, no telemetry, no error reporting beacons.
-- No backend database. All state is CRDT in browsers + URL fragment for room manifest.
+Binary at `/usr/local/bin/fleet-runner` on **Builder LXC 108**. From
+any workspace dir on that LXC:
+
+```
+fleet-runner health [--insecure]             # /health on all live container services (skips kind=static)
+fleet-runner smoke  [--insecure]             # GET example_url on all container services
+fleet-runner pages-audit                     # verify pages_url 200s for every kind=static entry
+fleet-runner build-test                      # go test ./... in every kind=container,language=go workspace
+fleet-runner update-dep <mod@ver>            # bump dep across all language=go repos
+fleet-runner inject <src> <dest>             # copy a file into every repo (still all kinds, on purpose)
+fleet-runner exec   "<cmd>"                  # shell command in every repo (filterable)
+fleet-runner push   "<msg>"                  # commit+push all dirty repos
+fleet-runner nginx-render                    # regenerate vhosts from templates
+fleet-runner rotate-default-token <value>    # gateway-only rotation, zero repo edits
+fleet-runner default-token                   # print the current gateway default token
+fleet-runner overrides list                  # per service, which override keys apply (and via which rule)
+fleet-runner overrides explain <slug>        # one service: every override key and its source (slug vs rule)
+fleet-runner overrides audit                 # stale per-slug entries, unused rules, per-key adoption counts
+fleet-runner new-service <name> <port> [cat] # scaffold new service
+fleet-runner stats                           # audit log + token usage summary
+```
+
+All commands accept `--filter kind=container,language=go` (and so on)
+to narrow the set. All commands accept `--tokens-used N --model NAME`
+for LLM accounting. **`kind: static` entries are skipped by default
+on every container-shaped operation** — don't try to deploy or health-
+check a static Pages site.
+
+## Infrastructure topology
+
+| Target          | SSH                                                            |
+|-----------------|----------------------------------------------------------------|
+| Bastion         | `ssh root@0docker.com`                                         |
+| Builder LXC 108 | `ssh root@0docker.com 'pct exec 108 -- bash -lc "<cmd>"'`      |
+| Dockerhost VM   | `ssh -J root@0docker.com ubuntu_vm@10.10.10.20`                |
+| Webgateway      | `ssh -J root@0docker.com florin@10.10.10.10`                   |
+
+- **Builder LXC 108** is a Proxmox container on `0docker.com`. Hosts
+  per-service build workspaces at `/root/workspace/<repo>/` and the
+  `fleet-runner` binary.
+
+  **AI-agent rule — always use a git worktree, never the shared
+  workspace directly.** Multiple AI sessions (or a session + a human)
+  routinely target the same repo concurrently; sharing
+  `/root/workspace/<repo>/` produces silent races (one session's
+  `git checkout`/`reset --hard` clobbers the other's working tree
+  mid-build, image tags get pushed in the wrong order, deploys flip
+  to the loser's commit). Each session must isolate its checkout:
+
+  ```
+  cd /root/workspace/<repo>
+  git fetch origin
+  git worktree add /root/wt/<repo>-<short-purpose> origin/<branch>
+  cd /root/wt/<repo>-<short-purpose>
+  # do work, build, push, then:
+  git worktree remove /root/wt/<repo>-<short-purpose>
+  ```
+
+  Worktrees share the same `.git` (cheap; no extra clone), but each
+  has its own `HEAD`, working tree, and `git status`. The shared
+  `/root/workspace/<repo>/` stays as the canonical "long-lived
+  upstream tracker" — operate on it only for read-only inspection
+  (`git log`, `git diff`); never `checkout` / `reset` there.
+
+  Build images from inside the worktree with the same
+  `docker buildx build --platform linux/amd64 --provenance=false …`
+  command; tag with a short purpose suffix (e.g.
+  `1.6.172-postmerge`, `1.6.171-traits-pr9c`) so concurrent builds
+  don't trample one canonical tag. Remove the worktree on exit so
+  Builder LXC disk doesn't accumulate stale checkouts.
+- **Dockerhost VM** runs the service containers. Compose dirs:
+  `/opt/services/<repo>/`, `/opt/security/<repo>/`,
+  `/home/ubuntu_vm/pentest/<repo>/`.
+- **Webgateway** runs nginx (the public TLS terminator) and the
+  keystore-aware `auth_request` flow.
+- Build + push: `docker buildx build --platform linux/amd64 --provenance=false -t ghcr.io/baditaflorin/<id>:<ver> --push .`
+
+Operational topology and credentials are in **private**
+`fleet-state/OPS.md` — never commit SSH targets, IPs, or tokens to
+service repos.
+
+## Unattended automation — secrets, DNS, preflight (read RUNBOOK-UNATTENDED.md)
+
+**Three primitives let any agent ship a brand-new service from "local
+code" to "live with DNS + scope + secrets" without operator intervention:**
+
+| Service | Role | Port |
+|---------|------|------|
+| [`go-fleet-secrets`](https://github.com/baditaflorin/go-fleet-secrets) | Encrypted vault for tokens (Hetzner, GitHub PAT, SMTP, platform API keys) | 18140 |
+| [`go-fleet-dns-sync`](https://github.com/baditaflorin/go-fleet-dns-sync) | Registry → Hetzner Cloud DNS reconciler (30-min ticker) | 18141 |
+| [`go-fleet-preflight`](https://github.com/baditaflorin/go-fleet-preflight) | Pre-deploy checklist (registry + DNS + port + secrets) | 18142 |
+
+The full operational playbook — bootstrap, secret rotation, "how to add
+a new service unattended", agent anti-patterns — lives in
+[`RUNBOOK-UNATTENDED.md`](RUNBOOK-UNATTENDED.md). **Read that before
+asking the user for tokens or where things live.**
+
+Key facts an agent needs to know:
+
+- **DNS API**: `https://api.hetzner.cloud/v1` (Bearer auth). The older
+  `dns.hetzner.com` Console API is **deprecated** — don't use it.
+- **Zone**: `0exec.com` is Hetzner Cloud zone id `1285812`.
+- **Gateway IP**: `176.9.123.221` — every fleet A record points here;
+  nginx terminates TLS and routes to the right upstream port.
+- **Token env name**: `HCLOUD_TOKEN` (canonical, matches hcloud-cli +
+  official Go SDK). `HETZNER_TOKEN` kept as back-compat alias.
+- **Secrets**: live in `go-fleet-secrets`, NEVER in env on dockerhost,
+  NEVER in service repos, NEVER in services.json / overrides.json.
+  Each secret has a `consumers` allowlist (`X-Auth-User` scope).
+- **Before any deploy**: call preflight; expect 200 (green) or 424 with
+  a detailed checklist of what's red.
+
+## Operations playbook — teach yourself to fish
+
+**For any AI agent (Claude, Gemini, Haiku, GPT-anything) that lands in
+this repo and is asked to bump versions, allocate ports, or deploy.
+The fleet has canonical tooling — your job is to learn to invoke it.
+This section gives you the exact commands plus the manual fallback
+when the canonical tool isn't reachable.**
+
+### How to invoke `fleet-runner` from anywhere
+
+`fleet-runner` lives on **Builder LXC 108** at `/usr/local/bin/fleet-runner`.
+The LXC is a Proxmox container on `0docker.com`. From any host with SSH
+access to the bastion:
+
+```bash
+# One-off invocation (works from your laptop, a CI runner, anywhere):
+ssh root@0docker.com "pct exec 108 -- /usr/local/bin/fleet-runner <subcommand> [args...]"
+
+# Examples:
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner converge'
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner allocate-port --count 1'
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner audit --all'
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> patch --push'
+```
+
+If you don't have SSH access to `0docker.com`, **stop and ask the user
+to run the command, copy-pasting the exact line above**. Do not
+substitute a different command. If you can't involve the user
+(autonomous run), drop down to the "manual fallback" recipe in each
+section below — but mark in your output that you used the fallback so
+the user can verify nothing drifted.
+
+#### Even shorter: install the local shim
+
+On a fresh workstation, once SSH keys to the bastion are set up
+(target identities are in private `fleet-state/OPS.md`), install
+`fleet-runner-shim` as `/usr/local/bin/fleet-runner` and every recipe
+below works with the bare command (drop the
+`ssh "$FLEET_BASTION" 'pct exec "$FLEET_LXC" -- "$FLEET_REMOTE_BIN"'` prefix).
+One-liner:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/baditaflorin/services-registry/main/bin/fleet-runner-shim \
+  | sudo tee /usr/local/bin/fleet-runner >/dev/null \
+  && sudo chmod +x /usr/local/bin/fleet-runner
+fleet-runner --help            # smoke test — should print the remote binary's help
+```
+
+After install, the canonical examples shorten to e.g.
+`fleet-runner converge`, `fleet-runner allocate-port --count 1`,
+`fleet-runner deploy go_<repo>`. The shim is dumb — it just forwards
+argv over SSH to LXC 108 — so output, exit codes, and prompts behave
+exactly as on the LXC. Source: [`services-registry/bin/fleet-runner-shim`](bin/fleet-runner-shim).
+
+### Recipe — Allocating a port for a new service (or resolving a conflict)
+
+**Canonical (preferred):**
+
+```bash
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner allocate-port --count 1'
+# Output: a single integer like 18099 — that's your host_port
+
+# Multiple at once:
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner allocate-port --count 3'
+```
+
+**Manual fallback (when canonical isn't reachable):**
+
+1. Open `services-registry/services.json` and find the highest
+   `host_port` currently in use in the reserved range (default
+   `18100–18999`).
+2. Pick the next integer above the max.
+3. Add an entry to `services.json` with **both** `host_port` (e.g.
+   `18099`) and `container_port` (what the service binds inside its
+   docker container — usually `8xxx`).
+4. Verify no clash: `grep -E '"(host\|container)_port":\s*<your-pick>' services-registry/services.json` should return only your line.
+
+**When you hit "port X is already taken" — the case Gemini got wrong:**
+
+The registry is the truth, not the running container. Find the
+squatter:
+
+```bash
+# Anyone claiming this port in the registry?
+python3 -c "import json; d=json.load(open('services-registry/services.json')); print([e['id'] for e in d if e.get('container_port')==8313 or e.get('host_port')==8313])"
+
+# Services WITHOUT a registered host_port (likely silent squatters):
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner audit registry-host-port-set'
+```
+
+If the squatter has no registry entry, **add one for it** with
+`allocate-port`. Your service keeps its original port. Only reallocate
+your service's port if the squatter has a legitimate registered claim.
+
+### Recipe — Bumping a service version (atomically across all files)
+
+**Canonical:** `fleet-runner bump-version` updates `service.yaml`, any
+`const Version = "..."` in `main.go`/`version.go`, creates the git
+tag, and (with `--push`) pushes commit + tag together:
+
+```bash
+# Local bump (writes files, prints next steps for review)
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> patch'
+
+# Atomic bump + commit + tag + push (one-shot)
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> patch --push'
+
+# Variants:  minor  /  major  /  --set 2.0.0
+```
+
+After the bump lands, the **container is still running the OLD
+version** until you deploy. Pair with `fleet-runner deploy <repo>`.
+
+**Manual fallback:**
+
+```bash
+cd /path/to/<repo>
+# 1. service.yaml (preserve quoting — quoted stays quoted)
+sed -i.bak 's/^version: "1.2.3"/version: "1.2.4"/' service.yaml && rm service.yaml.bak
+
+# 2. main.go / version.go const, if present
+grep -l 'const Version' *.go
+sed -i.bak 's/const Version = "1.2.3"/const Version = "1.2.4"/' main.go && rm main.go.bak
+
+# 3. Commit, tag, push, push tag — ALL FOUR (Gemini forgot step 4)
+git add -A && git commit -m "chore: bump version to 1.2.4"
+git tag 1.2.4              # NO leading v
+git push
+git push origin 1.2.4      # tags don't ride `git push` by default
+```
+
+Tag *after* the commit, push *both*.
+
+### Recipe — Deploying a service
+
+**Canonical (only one right answer):**
+
+```bash
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner deploy go_<repo>'
+```
+
+`fleet-runner deploy` is idempotent end-to-end: DNS A record (Hetzner),
+image build on AMD64 host (no QEMU emulation), push to GHCR, deploy
+via `docker compose` on the dockerhost, ensure nginx vhost + Let's
+Encrypt cert exist, `/health` smoke check. It also writes the
+deployed-version metadata the catalog UI reads.
+
+**Manual fallback (when LXC 108 is unreachable):**
+
+If you must deploy manually, do **all** of these in order — do not skip
+any:
+
+```bash
+# 1. Build on an AMD64 host (NOT on an ARM Mac — binary won't run)
+docker buildx build --platform linux/amd64 --provenance=false \
+  -t ghcr.io/baditaflorin/go_<repo>:<version> --push .
+
+# 2. Roll the container forward on the dockerhost
+ssh -J root@0docker.com ubuntu_vm@10.10.10.20 '
+  cd /opt/services/go_<repo>/src
+  git pull origin main
+  sudo docker compose pull && sudo docker compose up -d
+'
+
+# 3. Update the gateway-served deployment metadata (catalog UI reads it)
+ssh -J root@0docker.com florin@10.10.10.10 '
+  echo "{\"sha\":\"$(git rev-parse HEAD)\",\"version\":\"<version>\",\"deployed_at\":\"$(date -u +%FT%TZ)\"}" \
+    | sudo tee /etc/nginx/deploy-meta/<slug>.0exec.com.json
+  sudo nginx -s reload
+'
+
+# 4. Smoke test
+curl -sSf https://<slug>.<mesh>.com/health
+```
+
+If step 3 or 4 fails, the deploy is incomplete even though the
+container is running. Don't declare done until both succeed.
+
+### Recipe — Self-check before declaring "done"
+
+Three commands. Run all three. If anything in the category you touched
+is flagged, fix it before stopping:
+
+```bash
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner converge'
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner audit --all'
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner state snapshot'
+```
+
+### Anti-patterns — observed in prior agent sessions
+
+1. **"Port 8313 is taken, I'll pick 8500 and edit `service.yaml`."** Use
+   `fleet-runner allocate-port` and register the squatter. See "Allocating
+   a port" above.
+
+2. **"I bumped the version in `service.yaml` and pushed."** Did you tag
+   git AND push the tag AND update the docker image tag? Use
+   `fleet-runner bump-version --push`.
+
+3. **"All repos are pushed to origin/main."** Pushing code ≠ deploying.
+   The container is on the old image until `fleet-runner deploy`
+   (or the manual fallback) runs.
+
+4. **"I edited `service.yaml` port from 8313 to 8500 to avoid conflict."**
+   Silent multi-file drift. `fleet-runner audit port-matches-registry`
+   catches this. Don't.
+
+5. **"I ran `git tag X.Y.Z`."** Did you `git push origin X.Y.Z`? Tags
+   don't ride `git push` by default.
+
+6. **"`fleet-runner` isn't working for me, I'll use a different deploy
+   path."** Stop. Either report the exact command + error to the user,
+   or use the manual fallback recipe above and **say so** in your
+   summary so the user can verify the catalog-meta step landed.
+
+## Fleet-wide changes — change `go-common`, not consumers
+
+The cardinal rule when you'd otherwise touch every service: **modify
+the library and bump the dep.** A `go-common` patch plus
+`fleet-runner update-dep github.com/baditaflorin/go-common@vX.Y.Z`
+beats 130 PRs.
+
+## Local workflow
+
+- Local workspace root: `/Users/live/Documents/Codex/2026-05-08/`.
+  Sibling repos sit next to this one — read them directly when you
+  need to understand a dependency.
+- CI: there is none. Husky pre-commit hooks + local `npm run smoke`
+  (Node repos) or `go test ./...` (Go repos) are the gate. Don't
+  scaffold GitHub Actions build workflows.
+- Supply chain: prefer npm packages ≥ 3 days old over `@latest` —
+  accept known CVEs over zero-day supply-chain injection.
