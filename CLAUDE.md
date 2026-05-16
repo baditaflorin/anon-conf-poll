@@ -375,6 +375,47 @@ check a static Pages site.
   `1.6.172-postmerge`, `1.6.171-traits-pr9c`) so concurrent builds
   don't trample one canonical tag. Remove the worktree on exit so
   Builder LXC disk doesn't accumulate stale checkouts.
+
+  **AI-agent rule — pull often, push often. Never trust the
+  working-tree state as truth.** The shared workspace's HEAD is
+  whatever the last session left it as, often months stale. Three
+  failure modes this causes, all observed live 2026-05-16:
+
+  1. **Wrong-direction drift detection.** Reading
+     `/root/workspace/<repo>/service.yaml` as "the intended
+     version" surfaces a months-old version string and triggers a
+     rebuild that would ship the wrong code if the build worktree
+     weren't separately on `origin/main`.
+  2. **False triage rabbit holes.** A "broken" repo per
+     `fleet-runner build-test` is often just stale workspace state
+     — `origin/main` is already green because a parallel agent
+     pushed the fix you can't see. PRs get opened against problems
+     that don't exist; obsolete-on-arrival.
+  3. **Concurrent agents overwriting each other.** Holding commits
+     locally invites another session landing a competing fix; both
+     branches diverge invisibly until one stomps the other.
+
+  The hard rules:
+
+  - **Before reading any repo state** (`service.yaml`, source,
+    tests, `go.mod`): `cd /root/workspace/<repo> && git fetch
+    origin --tags` first. Then read via `git show origin/main:<file>`
+    or a fresh `git worktree add ... origin/main`. Never the
+    working-tree file directly.
+  - **Before triaging a "broken" repo**: re-run the failure against
+    a fresh `origin/main` worktree. If green, the workspace is
+    stale, not the code. Stop and verify before opening a PR.
+  - **Push every commit immediately.** `git commit && git push`
+    is one breath. Holding commits locally is what enables the
+    concurrent-collision class above.
+  - **Fleet-runner subcommands that read workspace state** (deploy,
+    audit, etc.) must `git fetch origin` first and read via
+    `git show origin/main:<path>`. `readRepoServiceYAML` in
+    `go_fleet_runner/deploy_helpers.go` is the canonical example.
+  - **`fleet-runner build-test` is currently NOT freshness-correct**
+    — it runs against the working tree. Treat its output as a
+    lower bound, not authoritative; confirm any "failure" against
+    a fresh worktree before triaging.
 - **Dockerhost VM** runs the service containers. Compose dirs:
   `/opt/services/<repo>/`, `/opt/security/<repo>/`,
   `/home/ubuntu_vm/pentest/<repo>/`.
