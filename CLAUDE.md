@@ -238,10 +238,34 @@ import (
 client := safehttp.NewClient(
     safehttp.WithTimeout(10*time.Second),
     safehttp.WithUserAgent(ua.Build(ServiceID, Version)),
+    // v0.16.0+ : auto-emit traces, auto-consult backoff, auto-tag degraded[]
+    safehttp.WithTraceCollector(os.Getenv("CALL_TRACER_URL")),
+    safehttp.WithBackoffCoordinator(os.Getenv("BACKOFF_COORDINATOR_URL")),
+    safehttp.WithDegradedSink(&degraded),
 )
 // Errors: safehttp.ErrBlocked, safehttp.ErrInvalidScheme, safehttp.ErrMissingHost
 u, err := safehttp.NormalizeURL(rawInput)
 ```
+
+**safehttp is for OUTBOUND (public-internet) HTTP only.** Calls to sibling
+fleet services on the private docker mesh (`http://go-fleet-*:<port>` /
+`http://<slug>:<port>`) MUST use a plain `net/http.Client`, NOT safehttp
+— the SSRF guard correctly rejects private IPs and will return
+`safehttp.ErrBlocked` immediately. Use a short timeout (1-3s),
+fail-open semantics, and append `"<primitive>-down"` to a per-request
+`degraded []string` slice on env-unset / timeout / 5xx. Surface
+`degraded[]` in the response JSON envelope. Confirmed pattern across
+every Phase 3 consumer migration (2026-05-17, ADR-0024) — every agent
+that tried safehttp for intra-mesh calls hit ErrBlocked and pivoted to
+plain `http.Client`.
+
+**Selftest and policy rule engines also live in `go-common`** (v0.17.0+ /
+v0.18.0+):
+
+| Package    | Import path                                      | Purpose                                                |
+|------------|--------------------------------------------------|--------------------------------------------------------|
+| selftest   | `github.com/baditaflorin/go-common/selftest`     | Canonical `/selftest` suite consumed by go-fleet-selftest-aggregator |
+| policyeval | `github.com/baditaflorin/go-common/policyeval`   | Small in-Go rule DSL: `(fact, []Rule) -> decision + explanation` — replaces ~5 custom rule engines |
 
 ## Service conventions (required for fleet-runner compatibility)
 
@@ -324,8 +348,25 @@ fleet-runner overrides list                  # per service, which override keys 
 fleet-runner overrides explain <slug>        # one service: every override key and its source (slug vs rule)
 fleet-runner overrides audit                 # stale per-slug entries, unused rules, per-key adoption counts
 fleet-runner new-service <name> <port> [cat] # scaffold new service
+fleet-runner scaffold-compose <repo>...      # write canonical docker-compose.yml from registry (--apply [--commit --push] | --missing for every container repo lacking one)
+fleet-runner scaffold-service-yaml <repo>... # write canonical service.yaml from registry
+fleet-runner render-compose <repo>           # print canonical docker-compose.yml to stdout (no write — read-only preview)
+fleet-runner audit compose-drift             # surface compose files diverging from the canonical fleet shape
+fleet-runner audit registry-host-port-set    # services without a registered host_port (silent squatter discovery)
 fleet-runner stats                           # audit log + token usage summary
 ```
+
+**Bootstrap a service that's missing its compose at HEAD** — the canonical
+two-liner (replaces hand-rolled `cat > docker-compose.yml` heredocs that
+got the shape wrong in the past):
+
+```bash
+fleet-runner scaffold-compose <repo> --apply --commit --push
+fleet-runner deploy <repo> --bootstrap --force-build --skip-smoke
+```
+
+`scaffold-compose --missing` will find every container repo without a
+compose at HEAD and render one for each in a single pass.
 
 All commands accept `--filter kind=container,language=go` (and so on)
 to narrow the set. All commands accept `--tokens-used N --model NAME`
@@ -420,7 +461,12 @@ check a static Pages site.
   `/opt/services/<repo>/`, `/opt/security/<repo>/`,
   `/home/ubuntu_vm/pentest/<repo>/`.
 - **Webgateway** runs nginx (the public TLS terminator) and the
-  keystore-aware `auth_request` flow.
+  keystore-aware `auth_request` flow. vhosts live as **regular files**
+  in `/etc/nginx/sites-enabled/<host>.{http,https}.conf` (NOT symlinks
+  to sites-available — `sites-available/` is unused). Edit
+  `sites-enabled/` directly for one-offs, or re-render via
+  `fleet-runner nginx-render --push`. Surprised an agent for ~10min
+  in the 2026-05-17 batch (ADR-0023 gap 5).
 - Build + push: `docker buildx build --platform linux/amd64 --provenance=false -t ghcr.io/baditaflorin/<id>:<ver> --push .`
 
 Operational topology and credentials are in **private**
@@ -795,6 +841,25 @@ for the canonical pattern.
    path."** Stop. Either report the exact command + error to the user,
    or use the manual fallback recipe above and **say so** in your
    summary so the user can verify the catalog-meta step landed.
+
+7. **"`fleet-runner audit <check> --json` says unknown check `--json`."**
+   Go's `flag` package stops parsing at the first non-flag argument, so
+   `audit feature-without-bump --json` reads `--json` as a positional
+   check name. Put `--json` **before** the check name:
+   `fleet-runner audit --json feature-without-bump`. Same rule for
+   `--severity`, `--filter`. Subcommands with their own FlagSet
+   (`audit compose-drift`, `audit compose-image-drift`,
+   `audit vhost-drift`) accept flags in any order because they parse
+   their own args list.
+
+8. **`bump-version` against a stale workspace.** Bug fixed in 2026-05-17
+   afternoon: `fleet-runner bump-version` now `git fetch origin --tags`
+   first and refuses to bump if origin/main is ahead. The historical
+   failure shape was: bump created a tag pointing at the wrong SHA,
+   `git push` rejected with "would clobber existing tag", recovery
+   required manual `git tag -d <ver>`. If you hit that on an older
+   binary, the recovery is still: `git -C /root/workspace/<repo>
+   tag -d <ver>` then re-run bump-version.
 
 ## Fleet-wide changes — change `go-common`, not consumers
 
