@@ -197,8 +197,11 @@ Keystore outage behaviour (designed-in graceful degradation):
   working ~15 min.
 - **Snapshot data** in `fleet-state/state/snapshot.json` flags the
   keystore as BROKEN once `/health` fails — that's the alert.
-- **Recovery procedure**: private `fleet-state/RUNBOOK.md` under
-  "keystore outage".
+- **Recovery procedures**:
+  - WAL stuck readonly (HTTP 409 "attempt to write a readonly database"):
+    public — `go-apikey-service/docs/recovery-keystore-readonly-wal.md`.
+  - Full keystore outage / data wipe: private `fleet-state/RUNBOOK.md`
+    under "keystore outage".
 
 The admin token (`X-Admin-Token` on `/issue`, `/revoke`, `/list`,
 `/purge`) is stored as `ADMIN_TOKEN` on the keystore container and
