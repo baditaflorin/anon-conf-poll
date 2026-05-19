@@ -379,6 +379,37 @@ the per-repo topic-derived entries take over with the same slugs.
 }
 ```
 
+**External / third-party containers** (via reserved `$external` key) —
+third-party upstream containers (Plausible, …) that run on the
+dockerhost but are NOT in the fleet repo set: no `mesh-*` GitHub
+topic for the generator to latch onto, no fleet-runner ownership of
+the compose file. Without a registry row their `host_port` is
+invisible to `allocate-port` — and the next deploy will silently
+re-claim it (the 2026-05-19 plausible incident). One row here keeps
+the allocator honest. Defaults to `runtime: external`, which gates
+fleet-runner deploy/build off so the upstream compose dir stays
+untouched. `$rules` are NOT applied to `$external` entries (fleet
+knobs like `cert_domain` / `proxy_egress` have no meaning for an
+upstream-managed container). See ADR-0031.
+
+```json
+{
+  "$external": [
+    {
+      "id": "plausible",
+      "name": "Plausible Analytics",
+      "host_port": 18204,
+      "container_port": 8000,
+      "repo_url": "https://github.com/plausible/community-edition",
+      "auth": { "type": "none" },
+      "external_compose_dir": "/opt/services/plausible/",
+      "external_image": "ghcr.io/plausible/community-edition:v3.2.1",
+      "why": "fleet-pixel's optional upstream; runs at /opt/services/plausible/ — register so allocate-port sees 18204 as taken"
+    }
+  ]
+}
+```
+
 **Audit surface** — never grep overrides by hand:
 
 ```
