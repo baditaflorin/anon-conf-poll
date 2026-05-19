@@ -129,15 +129,153 @@ further (e.g. needs a browser engine, needs paid threat intel).
 
 ## Key sibling repos
 
-| Repo                  | Role                                                                           | Visibility |
-|-----------------------|--------------------------------------------------------------------------------|------------|
-| `services-registry`   | canonical catalog (services.json + FLEET.md + this file)                       | PUBLIC     |
+| Repo                  | Role                                                                                | Visibility |
+|-----------------------|-------------------------------------------------------------------------------------|------------|
+| `services-registry`   | canonical catalog (services.json + FLEET.md + this file)                            | PUBLIC     |
 | `go-common`           | shared Go lib — SSRF-safe HTTP, jsbundle recovery, **apikey client**, ua, middleware | PUBLIC |
-| `go-apikey-service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`           | varies     |
-| `go-catalog-service`  | renders services.json into `catalog.0exec.com`                                 | PRIVATE    |
-| `go_fleet_runner`     | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)              | PRIVATE    |
-| `0crawl-platform`     | nginx vhost templates (also embedded in fleet-runner)                          | PRIVATE    |
-| `fleet-state`         | live operational state, runbooks, SSH topology                                 | PRIVATE    |
+| `mesh-common`         | shared TS/React runtime for the `mesh-*` P2P fleet (see "mesh-* P2P fleet" below)   | PUBLIC     |
+| `go-fleet-persona`    | cross-app + cross-origin display-identity service (`persona.0exec.com`)             | PUBLIC     |
+| `go-apikey-service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`                | varies     |
+| `go-catalog-service`  | renders services.json into `catalog.0exec.com`                                      | PRIVATE    |
+| `go_fleet_runner`     | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)                   | PRIVATE    |
+| `0crawl-platform`     | nginx vhost templates (also embedded in fleet-runner)                               | PRIVATE    |
+| `fleet-state`         | live operational state, runbooks, SSH topology                                      | PRIVATE    |
+
+## mesh-* P2P fleet — separate from the container fleet
+
+The `mesh-*` repos under `baditaflorin/*` are a **distinct fleet** from the
+0exec/0crawl container services described above. They are browser-only,
+rootless WebRTC apps published as static GitHub Pages sites (`kind: static`,
+`mesh: mesh-pages`). They do not have container images, ports, `/health`
+endpoints, or keystore-gated auth.
+
+Each app depends on **`@baditaflorin/mesh-common`** via `file:../mesh-common`
+so the bundle is fully self-contained on every GH Pages deploy — no npm
+publish step, no runtime dependency on a registry.
+
+### `mesh-common` — shared runtime + drop-in components
+
+Single source of truth for the look, feel, and capabilities of every
+`mesh-*` app. Versioned via `package.json` and `CHANGELOG.md`; consumers
+re-bundle on the next `npm run build`.
+
+Headline primitives (current as of 0.10.x):
+
+| Module                        | What it does                                                                 |
+|-------------------------------|------------------------------------------------------------------------------|
+| `MeshShell`                   | App chrome: ⚙ settings FAB + drawer, 📡 invite QR FAB, self-ref bar, beacon  |
+| `SettingsDrawer`              | Room id + signaling/TURN overrides; injection slot for per-app extras        |
+| `createMeshConfig`            | One-call config factory (app name, accent, version, signaling/TURN defaults) |
+| `useYRoom`                    | `{doc, provider, peerId, peerCount}` for a Yjs room over WebRTC              |
+| `clockSync`                   | NTP-over-Yjs offset → mesh-median time (~10–30 ms stable)                    |
+| `commitReveal`                | SHA-256 commit/reveal for anonymous votes, fair RNG, role assignment         |
+| `identity` + `tofuRegistry`   | Ed25519 keypair + TOFU pinned-pubkey registry (per-room crypto identity)     |
+| `moderator` + `ModeratorBadge`| Signed first-claim-wins role with 30-min auto-expire                         |
+| `PersonalQR` / `QRExchange`   | Inline-SVG QR (real-URL payload) + camera scanner                            |
+| `useAwareness`                | Typed wrapper around `y-protocols/awareness` (presence / cursors / typing)   |
+| `PeerAvatar`                  | Deterministic SVG avatar from peerId / pubkey — zero network, zero PII       |
+| `useTypedMap` / `useTypedArray` | Zod-validated `Y.Map` / `Y.Array` — hostile peers' writes filtered at the edge |
+| `useRoomSeal` / `deriveRoomKey` | Room-wide AES-GCM seal via PBKDF2(passphrase, roomId) — opt-in E2E         |
+| `MeshErrorBoundary`           | Drop-in crash containment for the `<Feature>` subtree                        |
+| `useMeshLink`                 | Typed encoder/parser for the `#r=…&p=…&x=…` deep-link fragment               |
+| `useMultiRoom`                | Run several Yjs rooms in one tab (facilitator dashboards, embeds, side-by-side) |
+| `usePresenceCursors`          | Figma-style live cursors built on `useAwareness`                             |
+| `useThreadedMessages`         | `Y.Map<msgId, {parent, body, by, at, sig}>` with `post()` / `reply()`        |
+| `useReadReceipts`             | Per-peer monotone "last seen at message N"                                   |
+| `useOfflineQueue`             | Buffer writes when isolated; replay through `flush()` on reconnect           |
+| `useFileShare`                | Chunked file share through the Yjs transport                                 |
+| `SafeMarkdown`                | Allow-list-sanitised Markdown via `marked` (no raw HTML pass-through)        |
+| `useFakeTime`                 | Test-only clock fixture; production collapses to `Date.now()`                |
+| **`useFleetPersona`**         | **Cross-app + cross-origin display identity (nickname + name + avatar)**     |
+| **`FleetAvatar`**             | **Drop-in avatar for the current fleet persona; reuses `PeerAvatar`**        |
+| **`FleetIdentityPanel`**      | **Drop-in settings UI; auto-mounted inside `MeshShell` by default in 0.10.1+**|
+
+### Fleet identity (`fleetPersona`) — three-tier resolver
+
+`useFleetPersona({ appName, serviceUrl? })` resolves a `FleetPersona`
+(`nickname + name + avatarSeed + avatarVariant + paletteIndex`) through
+three tiers, falling back gracefully if any is unavailable:
+
+| Tier | Where                       | Notes                                                                         |
+|------|-----------------------------|-------------------------------------------------------------------------------|
+| L0   | per-app `localStorage`      | Always wins once the user types something                                     |
+| L1   | same-origin `localStorage`  | **Free** on GH Pages — every `mesh-*` app under `baditaflorin.github.io` shares one origin |
+| L2   | `https://persona.0exec.com` | Optional cross-origin sync; 2 s fetch timeout; fire-and-forget; service-down → silent |
+
+The L2 fetch never blocks the UI; if the service is down or slow, L0/L1
+keep the user's identity intact. Writes from app code propagate down the
+stack respecting the per-app `mode` setting (`off` / `local-fleet` /
+`remote-fleet`).
+
+Field validation: strict ASCII allowlist `^[A-Za-z0-9_\- .]{1,32}$` on
+every text field — identical on client and server, neutralises a class
+of stored-XSS / homoglyph concerns. `anonId` and `writeToken` are
+128-bit hex; `writeToken` is held only inside the module's closure so
+app code cannot accidentally exfiltrate it.
+
+Cross-origin handoff: `fp.buildHandoffUrl(targetOrigin)` returns a URL
+with `#fp=<base64>` that carries `anonId + writeToken + persona`. Open
+on the new origin → `useFleetPersona` auto-consumes the fragment on
+mount, wipes the hash from the URL, and the new origin has the same
+identity. Works with `PersonalQR` for cross-device transfer.
+
+`MeshShell` mounts `FleetIdentityPanel` inside the settings drawer by
+default in mesh-common ≥ 0.10.1. Apps that want to opt out (kiosks,
+apps that own their own identity flow) pass `fleetIdentityServiceUrl={null}`;
+apps that want a staging endpoint pass their own URL.
+
+### `go-fleet-persona` — companion service for L2 sync
+
+Public URL: **`https://persona.0exec.com`** (canonical) and
+`https://fleet-persona.0exec.com` (alias).
+
+| Aspect            | Value                                                                          |
+|-------------------|--------------------------------------------------------------------------------|
+| Registry id       | `fleet-persona`                                                                |
+| Mesh / kind / runtime | `mesh-0exec` / `container` / `compose`                                     |
+| Port              | `18209` (host) → `18209` (container)                                           |
+| Image             | `ghcr.io/baditaflorin/fleet-persona:<sha>` (cosign-signed)                     |
+| Auth              | `none` — **public read by design**; writes argon2id-gated by client-held writeToken |
+| Storage           | pure-Go SQLite (`modernc.org/sqlite`) on a single docker volume                |
+| Tests             | 21 Go unit + handler tests; `testing/smoke.sh` runs the full lifecycle end-to-end |
+
+Wire surface:
+
+```
+GET    /v1/health                → 200 { ok, ver, ts, ro }
+GET    /health                   → same (fleet canonical alias)
+GET    /selftest                 → 200 { ok, ver, checks[] }  (200 = all green, 503 = any fail)
+GET    /v1/persona/{anonId}      → 200 { nickname, name, avatarSeed, avatarVariant, paletteIndex, updatedAt } | 404
+PUT    /v1/persona/{anonId}      → 204    body: { …persona, writeToken }
+DELETE /v1/persona/{anonId}      → 204    body: { writeToken }
+```
+
+CORS is `*` by design — the read API is public; `anonId` itself is the
+only read-secret (and display names are non-PII). Writes require a
+separate 128-bit `writeToken` argon2id-hashed at rest.
+
+Privacy stance: no IP addresses stored (only short-lived hashes in
+rate-limit buckets, daily-rotated salt); no User-Agent / Referer / app
+name kept; no mapping that lets the operator reconstruct which apps a
+browser opens.
+
+Rate limits: 60 reads/min/IP and 30 writes/hour/(IP, anonId) by default;
+4 KB body cap; global read-only kill switch via `-read-only` flag.
+
+### When building or auditing a `mesh-*` app
+
+- `kind: static` — no Dockerfile, no `/health`, no keystore. The
+  ⚙ FAB renders `SettingsDrawer` which auto-mounts `FleetIdentityPanel`
+  on `mesh-common ≥ 0.10.1`. No per-app code needed to surface the panel.
+- HTML/CSS/JS published from `docs/`. Build locally with `npm run build`;
+  commit `docs/` and push. GH Pages serves it within ~1 min.
+- Pre-commit hook runs `bash scripts/smoke.sh` (vitest unit tests +
+  `vite build` + sanity-check `docs/index.html`). **Never `--no-verify`**;
+  if it fails, run `npm run fmt` and re-commit.
+- `useFleetPersona` is the canonical way to read/write the user's display
+  name — never roll your own `myName` localStorage key for new apps.
+  Existing apps can migrate at their own pace; the panel is opt-in for
+  the user via the sync-mode radio.
 
 ## Auth — both container meshes use the **same** keystore (`go-apikey-service`)
 
