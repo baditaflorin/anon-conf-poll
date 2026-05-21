@@ -560,6 +560,64 @@ fleet-runner overrides audit                # stale slugs, unused rules, key ado
 entries that reference removed services; rules with no matching
 service).
 
+## Temporary degradations — read before deploying
+
+The fleet has two TEMPORARY workarounds active as of 2026-05-21. Both
+are tracked, both have separate fixes in flight, both must be removed
+from this doc when the underlying issue ships. Treat them as known
+degradations, NOT "this is fine".
+
+### `fleet-runner new-service` is broken — DO NOT USE (until further notice)
+
+Three known bugs: it double-prefixes the service name, references an
+undefined `safehttp.CheckURL`, and `--push` doesn't actually push.
+Separate fix in flight against `go_fleet_runner`. Until that fix ships
+AND the binary on Builder LXC 108 is updated, the canonical scaffold
+path is **copy-from-peer**:
+
+```bash
+# 1. Copy a recent successful peer in the same mesh + language.
+cp -r go_domain_amp_detector go_domain_<new>
+cd go_domain_<new>
+rm -rf .git
+# Search/replace identifiers (id, name, slug, port, description).
+# Allocate the port first (via the fleet-runner shim, or the explicit
+# bastion form documented in "How to invoke fleet-runner" below):
+fleet-runner allocate-port --count 1
+
+# 2. Init + create the GitHub repo + push.
+git init && git add -A && git commit -m "initial scaffold from go_domain_amp_detector"
+gh repo create baditaflorin/<repo> --private --source=. --remote=origin \
+  --description "<one-line description>" --push
+
+# 3. Tag the first version.
+git tag 0.1.0 && git push origin 0.1.0
+
+# 4. Add the canonical GitHub topics so bin/generate.py picks it up.
+gh repo edit --add-topic mesh-0crawl \
+             --add-topic kind-container \
+             --add-topic language-go \
+             --add-topic runtime-compose \
+             --add-topic category-<cat>
+```
+
+Remove this section when `fleet-runner new-service` is fixed and the
+LXC 108 binary is updated.
+
+### `--skip-cosign` is the temporary norm (vault key empty)
+
+Cosign signing is currently disabled fleet-wide because the vault's
+`cosign-signing-key` is empty (separate investigation in flight).
+Until it's restored, deploy with `--skip-cosign`:
+
+```bash
+fleet-runner deploy go_<repo> --skip-cosign
+```
+
+**Production images going through `deploy` right now are NOT
+cosign-verified.** This is a security degradation, not a stylistic
+choice — re-enable cosign as soon as the vault key is restored.
+
 ## fleet-runner
 
 Binary at `/usr/local/bin/fleet-runner` on **Builder LXC 108**. From
@@ -903,7 +961,34 @@ Tag *after* the commit, push *both*.
 **Canonical (only one right answer):**
 
 ```bash
-ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner deploy go_<repo>'
+fleet-runner deploy go_<repo> \
+  --services /root/workspace/services-registry/services.json \
+  --skip-cosign
+```
+
+Two non-obvious flags above, both TEMPORARY (see "Temporary
+degradations" near the top of this file):
+
+- `--services /root/workspace/services-registry/services.json` —
+  `raw.githubusercontent.com/.../services.json` is Fastly-cached with
+  `max-age=300`, so after a freshly-pushed `overrides.json` the
+  registry slice can lag 3–5 minutes. Pointing at the local copy on
+  LXC 108 sidesteps the cache. Apply the same flag to `nginx-render`
+  and any other subcommand that reads the registry. Remove when
+  `fleet-runner` defaults to the local copy.
+- `--skip-cosign` — vault's `cosign-signing-key` is currently empty;
+  signing is disabled fleet-wide. Remove when the vault key is
+  restored.
+
+**Post-deploy: re-render the vhost.** The embedded `nginx-render`
+step inside `deploy` often misses the new vhost due to the same
+registry-fetch race. Until `fleet-runner deploy` folds in the local
+fetch (separate fix in flight), follow every new-service deploy with:
+
+```bash
+fleet-runner nginx-render \
+  --services /root/workspace/services-registry/services.json \
+  --filter <slug> --push --reload
 ```
 
 `fleet-runner deploy` is idempotent end-to-end. The pipeline is built
@@ -982,12 +1067,15 @@ container is running. Don't declare done until both succeed.
 ### Recipe — Self-check before declaring "done"
 
 Three commands. Run all three. If anything in the category you touched
-is flagged, fix it before stopping:
+is flagged, fix it before stopping. Pass `--services
+/root/workspace/services-registry/services.json` so a just-registered
+service doesn't get missed because of the 5-minute Fastly cache on
+`raw.githubusercontent.com`:
 
 ```bash
-ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner converge'
-ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner audit --all'
-ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner state snapshot'
+fleet-runner converge       --services /root/workspace/services-registry/services.json
+fleet-runner audit --all    --services /root/workspace/services-registry/services.json
+fleet-runner state snapshot --services /root/workspace/services-registry/services.json
 ```
 
 ### Recipe — Closing a capability gap (gap → fix loop)
