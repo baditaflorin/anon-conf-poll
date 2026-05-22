@@ -8,6 +8,20 @@ propagated to every fleet repo via `fleet-runner inject`.
 If you find a stale copy that differs from this one, the registry copy
 wins — refresh and re-propagate, don't fork it.
 
+> ## ⚠️ RULE ZERO — work against `origin/main`, NOT stale workspace code
+>
+> **Before you read, triage, build, bump, or deploy ANYTHING:**
+> `git fetch origin --tags` first, then operate against `origin/main`
+> (via `git show origin/main:<file>` or a fresh
+> `git worktree add … origin/main`). The shared
+> `/root/workspace/<repo>/` working tree is whatever the last (often
+> parallel) agent left it — routinely **months stale**. Acting on it
+> ships old code, opens PRs against already-fixed bugs, and lets
+> concurrent agents stomp each other. `fleet-runner build-test` runs
+> against the working tree and is NOT freshness-correct — confirm any
+> "failure" against a fresh `origin/main` worktree before triaging.
+> Details below under "pull often, push often." DON'T SKIP THIS.
+
 Per-service specifics (port, mesh, slug, version, category) live in
 the repo's own `service.yaml` + `deploy.yaml` + `README.md`. This file
 is intentionally generic — it explains the *fleet*, not any one
@@ -1199,6 +1213,23 @@ for the canonical pattern.
    required manual `git tag -d <ver>`. If you hit that on an older
    binary, the recovery is still: `git -C /root/workspace/<repo>
    tag -d <ver>` then re-run bump-version.
+
+9. **`./binary &` smoke tests on Builder LXC 108.** Don't. The builder
+   is a build host and `fleet-runner` host — it is **not** a service
+   host. When an agent runs `go build && ./binary &` inside
+   `/root/workspace/<repo>/` to "quickly check the handler responds,"
+   the binary backgrounds, the agent's SSH session ends, and the
+   process becomes an orphan (`PPid=1`) listening on whichever port it
+   bound. Twelve such orphans were found on 2026-05-21 — three of them
+   silently squatting *registered* host_ports (e.g. 18107/18224),
+   poised to confuse the next agent who deploys the canonical service
+   to dockerhost and runs `ss -tlnp` to debug. Canonical smoke is the
+   `fleet-runner deploy` smoke gate against the dockerhost-side
+   container, not an in-process binary on the builder. If you genuinely
+   need to exercise the handler before `deploy`, run `go test ./...`
+   (which uses `httptest`) — no port binding, no orphan risk. If you
+   *must* bind a port, use `127.0.0.1:0` (ephemeral) and `kill` it on
+   the same line that started it.
 
 ## Fleet-wide changes — change `go-common`, not consumers
 
