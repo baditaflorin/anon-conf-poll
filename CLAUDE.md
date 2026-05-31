@@ -893,6 +893,26 @@ copy elsewhere, mirror the same shape.
 
 ### Recipe — Allocating a port for a new service (or resolving a conflict)
 
+> **A host_port collision does NOT fail loudly — it clobbers a live
+> service.** `fleet-runner deploy` resolves the dockerhost compose dir
+> **by host_port**. If you hand-pick a port another service already
+> owns, `deploy <your-service>` finds the *other* service's
+> `/opt/services/<that-repo>/` directory, overwrites its
+> `docker-compose.yml` with your image, and rolls your container in
+> place — **silently evicting the live service that owned the port**.
+> Observed 2026-05-31: `fleet-pipe` registered on a hand-picked `18256`
+> took down `svg-icon-inventory` (which already owned 18256), because
+> the deploy deployed pipe into svg's compose dir. **Always take the
+> port from `allocate-port`; never hand-pick.**
+>
+> Recovery if you collide: (1) `docker compose down` your squatter in
+> the victim's dir to free the port; (2) `fleet-runner deploy
+> <victim_repo> --bootstrap --force-build` — a *plain* deploy is fooled
+> into a no-op when the squatter happens to report the same version, so
+> force it; (3) move your service to a free port in BOTH the registry
+> (`overrides.json` → regen → push) and the repo (Dockerfile, compose,
+> service.yaml, deploy.yaml), then redeploy.
+
 **Canonical (preferred):**
 
 ```bash
@@ -1173,7 +1193,11 @@ for the canonical pattern.
 
 1. **"Port 8313 is taken, I'll pick 8500 and edit `service.yaml`."** Use
    `fleet-runner allocate-port` and register the squatter. See "Allocating
-   a port" above.
+   a port" above. **And never hand-pick a port at all** — deploy resolves
+   the dockerhost compose dir by host_port, so a collision silently
+   clobbers + evicts the live service that owns it (the 2026-05-31
+   fleet-pipe/svg-icon-inventory incident). Always take the number from
+   `allocate-port`.
 
 2. **"I bumped the version in `service.yaml` and pushed."** Did you tag
    git AND push the tag AND update the docker image tag? Use
@@ -1230,6 +1254,62 @@ for the canonical pattern.
    (which uses `httptest`) — no port binding, no orphan risk. If you
    *must* bind a port, use `127.0.0.1:0` (ephemeral) and `kill` it on
    the same line that started it.
+
+## SQLite safety — mandatory three rules (enforced 2026-05-26)
+
+`modernc.org/sqlite` uses real `fcntl` syscalls for WAL file locking.
+Go creates one OS thread per goroutine blocking on a real syscall — unlike
+HTTP or postgres, which go through Go's epoll/kqueue poller and do NOT
+spawn threads. Under high `/verify` traffic, an uncancellable goroutine per
+request × 5s busy_timeout = 1388 OS threads = 48 GB RAM exhausted on the
+host (go-apikey-service incident 2026-05-26).
+
+**Any service that opens a `modernc.org/sqlite` DB MUST follow all three:**
+
+```go
+// 1. Serialise writes at the Go pool level (channel wait, not fcntl wait).
+//    This prevents thread explosion: Go queues at the pool, not the syscall.
+db.SetMaxOpenConns(1)
+db.SetMaxIdleConns(1)
+
+// 2. Cap busy_timeout — belt-and-suspenders, protects against pool leaks.
+//    Use ≤ 500ms.
+dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(500)&..."
+
+// 3. Context-bound ALL goroutines that write to the DB.
+//    Never: go db.Exec(...)
+//    Always:
+go func(k string, ts int64) {
+    ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+    defer cancel()
+    _, _ = db.ExecContext(ctx, `UPDATE ...`, ts, k)
+}(key, now)
+```
+
+**Audit one-liner** — run this in any Go fleet repo workspace to find
+violations before they cause an incident:
+
+```bash
+# Find SQLite services missing safety rules
+for dir in /opt/services/*/; do
+  go_mod="$dir/go.mod"
+  main="$dir/main.go"
+  [ -f "$go_mod" ] || continue
+  grep -q "modernc.org/sqlite" "$go_mod" || continue
+  echo "=== $dir ==="
+  grep -q "SetMaxOpenConns" "$main" || echo "  MISSING: SetMaxOpenConns"
+  grep -q "busy_timeout" "$main" && \
+    grep -oP 'busy_timeout\(\K[0-9]+' "$main" | \
+    awk '{if($1>500) print "  HIGH busy_timeout: "$1"ms (reduce to ≤500)"}'
+  grep -n "go db\." "$main" 2>/dev/null | grep -v '//' | \
+    sed 's/^/  FIRE-AND-FORGET goroutine: /'
+done
+```
+
+**Current fleet status** (as of 2026-05-26):
+- `go-apikey-service`: fixed (was the incident service)
+- `go-fleet-persona`: clean (had `SetMaxOpenConns(1)` + context calls already)
+- All other services: use postgres/redis (no fcntl risk)
 
 ## Fleet-wide changes — change `go-common`, not consumers
 
