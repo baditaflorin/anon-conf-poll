@@ -642,7 +642,8 @@ fleet-runner health [--insecure]             # /health on all live container ser
 fleet-runner smoke  [--insecure]             # GET example_url on all container services
 fleet-runner pages-audit                     # verify pages_url 200s for every kind=static entry
 fleet-runner build-test                      # go test ./... in every kind=container,language=go workspace
-fleet-runner update-dep <mod@ver>            # bump dep across all language=go repos
+fleet-runner update-dep <mod@ver>            # bump dep across all language=go repos (or a subset: --repos a,b / --filter mesh=…,category=…,ids=a;b)
+fleet-runner deploy-all                       # redeploy a filtered set (--repos a,b / --mesh / --framework); honors the exclude list (won't touch infra)
 fleet-runner inject <src> <dest>             # copy a file into every repo (still all kinds, on purpose)
 fleet-runner exec   "<cmd>"                  # shell command in every repo (filterable)
 fleet-runner push   "<msg>"                  # commit+push all dirty repos
@@ -674,10 +675,20 @@ fleet-runner deploy <repo> --bootstrap --force-build --skip-smoke
 compose at HEAD and render one for each in a single pass.
 
 All commands accept `--filter kind=container,language=go` (and so on)
-to narrow the set. All commands accept `--tokens-used N --model NAME`
-for LLM accounting. **`kind: static` entries are skipped by default
-on every container-shaped operation** — don't try to deploy or health-
-check a static Pages site.
+to narrow the set. The filter axes are `mesh`, `kind`, `language`,
+`category`, and `ids` (the surgical "just these repos" axis — list
+members separated by `;` since commas separate `k=v` pairs). For
+`update-dep` and `deploy-all` there's also a dedicated `--repos a,b,c`
+convenience flag (accepts registry ids OR workspace dir names). So a
+two-repo dep bump no longer needs hand-edits:
+`fleet-runner update-dep --push --repos go_foo,go_bar <mod@ver>`.
+`update-dep` keeps Kind=container + Language=go defaults, so a targeted
+bump never reaches a static/non-Go repo, and the exclude list always
+wins over an explicitly-named repo (you cannot `--repos` your way into
+redeploying the keystore). All commands accept `--tokens-used N
+--model NAME` for LLM accounting. **`kind: static` entries are skipped
+by default on every container-shaped operation** — don't try to deploy
+or health-check a static Pages site.
 
 ## Infrastructure topology
 
@@ -954,8 +965,9 @@ your service's port if the squatter has a legitimate registered claim.
 ### Recipe — Bumping a service version (atomically across all files)
 
 **Canonical:** `fleet-runner bump-version` updates `service.yaml`, any
-`const Version = "..."` in `main.go`/`version.go`, creates the git
-tag, and (with `--push`) pushes commit + tag together:
+`const Version = "..."` in `main.go`/`version.go`, prepends a
+`CHANGELOG.md` entry (see "Per-repo CHANGELOG.md" above), creates the
+git tag, and (with `--push`) pushes commit + tag together:
 
 ```bash
 # Local bump (writes files, prints next steps for review)
@@ -963,6 +975,12 @@ ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version g
 
 # Atomic bump + commit + tag + push (one-shot)
 ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> patch --push'
+
+# Write a richer changelog entry instead of the auto-derived commit list:
+ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> minor --changelog "### Added
+- new /foo endpoint
+### Fixed
+- BREAKING: renamed ?q= to ?url=" --push'
 
 # Variants:  minor  /  major  /  --set 2.0.0
 ```
@@ -1315,8 +1333,54 @@ done
 
 The cardinal rule when you'd otherwise touch every service: **modify
 the library and bump the dep.** A `go-common` patch plus
-`fleet-runner update-dep github.com/baditaflorin/go-common@vX.Y.Z`
-beats 130 PRs.
+`fleet-runner update-dep --push github.com/baditaflorin/go-common@vX.Y.Z`
+beats 130 PRs. To bump only a subset (stragglers, one mesh, one
+category) add `--repos a,b` or `--filter mesh=…,category=…,ids=a;b` —
+`update-dep` is no longer fleet-wide-only.
+
+**`go-common` ≥ v0.55.0 — `/selftest` bypasses the fetch cache.** The
+`selftest.Suite` now runs every check with
+`safehttp.WithoutFetchCacheContext(ctx)`, so `/selftest` validates the
+service's REAL outbound path (DNS + TLS + origin) instead of routing
+live probes through a cold fleet cache. Before this, live-probe
+selftests (e.g. a detector fetching vercel/netlify/fly) routed through
+the cold cache on the freshly-built image and blew past
+`fleet-runner deploy`'s 8 s smoke `/selftest` timeout — false-failing
+otherwise-healthy deploys and rolling them back. If you see a deploy
+roll back on a `/selftest` timeout while `/health` is green, the fix is
+to bump the service to go-common ≥ v0.55.0 and redeploy; do NOT reach
+for `--skip-smoke`. Need a single client to skip the cache outside
+selftest? `safehttp.WithoutFetchCache()` (per-client) or
+`WithoutFetchCacheContext(ctx)` (per-request).
+
+## Per-repo `CHANGELOG.md` — capture what changed at each version
+
+Every container repo keeps a **`CHANGELOG.md`** at its root, newest
+entry on top, in the same shape `go-common` uses:
+
+```markdown
+## <version> — <YYYY-MM-DD>
+
+### Added | Changed | Fixed | Removed
+- one bullet per meaningful change; lead breaking changes with **BREAKING:**
+```
+
+Why: with ~220 services moving independently, "what shipped in this
+version and could it have broken X?" is otherwise un-answerable without
+trawling git. A per-version, human-and-AI-written entry makes
+regressions diff-able at a glance and feeds the fleet-wide
+`fleet-runner changelog` digest with intent (not just PR titles).
+
+**You (the agent) write the entry — you just made the change, so you
+know what happened and why.** `fleet-runner bump-version` scaffolds it
+for you: it prepends a `## <newver> — <date>` block to `CHANGELOG.md`
+(creating the file if absent), auto-populating it with the commit
+subjects since the previous tag. Pass `--changelog "### Added\n- …"`
+to write a richer entry instead of the auto-derived one. The changelog
+edit rides the same atomic bump commit as `service.yaml` + the tag, so
+a version never lands without a changelog line. This is opt-out only by
+omission — don't bump a service's version without leaving a changelog
+entry.
 
 ## Local workflow
 
