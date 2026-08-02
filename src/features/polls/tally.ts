@@ -1,10 +1,11 @@
+import { compareByCreatedAtThenId } from "../../shared/ordering";
 import type { Poll, PollTally, VerifiedVote } from "./types";
 
 export function tallyVotes(polls: Poll[], votes: VerifiedVote[]): PollTally[] {
   const uniqueByPollAndNullifier = new Set<string>();
   const counts = new Map<string, number>();
 
-  for (const vote of [...votes].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+  for (const vote of [...votes].sort(compareByCreatedAtThenId)) {
     if (!vote.verified) {
       continue;
     }

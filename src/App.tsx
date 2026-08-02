@@ -91,6 +91,7 @@ import {
 } from "./features/sync/iceConfig";
 import { appConfig } from "./shared/config";
 import { sanitizeError } from "./shared/logger";
+import { compareByCreatedAtThenId } from "./shared/ordering";
 
 type BusyState = {
   label: string;
@@ -2233,7 +2234,7 @@ function uniqueQuestions(questions: VerifiedQuestion[]): VerifiedQuestion[] {
 
   return [...questions]
     .filter((question) => question.verified)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort(compareByCreatedAtThenId)
     .filter((question) => {
       if (seen.has(question.nullifier)) {
         return false;
