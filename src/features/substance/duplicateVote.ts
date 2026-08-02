@@ -1,3 +1,5 @@
+import { compareByCreatedAtThenId } from "../../shared/ordering";
+
 export type DuplicateVoteInput = {
   pollId: string;
   votes: Array<{
@@ -20,7 +22,7 @@ export function summarizeDuplicateVotes(input: DuplicateVoteInput): DuplicateVot
   let countedVotes = 0;
   let duplicateVotes = 0;
 
-  for (const vote of [...input.votes].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+  for (const vote of [...input.votes].sort(compareByCreatedAtThenId)) {
     const key = `${input.pollId}:${vote.nullifier}`;
 
     if (seen.has(key)) {
