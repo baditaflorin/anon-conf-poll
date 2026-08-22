@@ -314,11 +314,19 @@ Request flow at the gateway:
 
 1. **nginx vhost** captures the key into `$api_key_in` (Bearer regex →
    X-API-Key header → ?api_key query, in that order).
-2. **Static fallback** — if `$api_key_in` matches the universal demo
-   key (`$default_token`, from `/etc/nginx/conf.d/_default_token.conf`),
-   accept immediately and set `X-Auth-User: demo`. Survives keystore
-   outages for the public demo path. The default token is rate-limited
-   to 1 req/s and ~60 req/h per IP at this layer.
+2. ~~**Static fallback**~~ — **sunset 2026-08-22 (security risk).** This
+   step previously accepted the universal demo key (`$default_token`,
+   from `/etc/nginx/conf.d/_default_token.conf`) immediately and set
+   `X-Auth-User: demo`, surviving keystore outages for the public demo
+   path. A static, undifferentiated, rate-limit-only gate in front of
+   every service was judged too broad a bypass and has been removed
+   from the gateway. `$api_key_in == default_token` now falls through to
+   step 3 like any other value and gets a normal 401 from the keystore.
+   There is currently no public, unauthenticated demo path — every
+   caller needs a real keystore-issued key. Don't reference
+   `default_token` as a working example in service docs; if you find one,
+   fix it the same way this passage was fixed (mark it sunset, point at
+   real auth) rather than leaving it looking live.
 3. Otherwise nginx POSTs `X-Verify-Key: $api_key_in` to the keystore's
    `/verify` via `auth_request`.
 4. Keystore checks SQLite → returns 200 + `X-Auth-User` / `X-Auth-Scope`,
@@ -604,10 +612,10 @@ service).
 
 ## Temporary degradations — read before deploying
 
-The fleet has two TEMPORARY workarounds active as of 2026-05-21. Both
-are tracked, both have separate fixes in flight, both must be removed
-from this doc when the underlying issue ships. Treat them as known
-degradations, NOT "this is fine".
+The fleet has one TEMPORARY workaround active. It is tracked, has a
+separate fix in flight, and must be removed from this doc when the
+underlying issue ships. Treat it as a known degradation, NOT "this is
+fine".
 
 ### `fleet-runner new-service` is broken — DO NOT USE (until further notice)
 
@@ -645,20 +653,6 @@ gh repo edit --add-topic mesh-0crawl \
 
 Remove this section when `fleet-runner new-service` is fixed and the
 LXC 108 binary is updated.
-
-### `--skip-cosign` is the temporary norm (vault key empty)
-
-Cosign signing is currently disabled fleet-wide because the vault's
-`cosign-signing-key` is empty (separate investigation in flight).
-Until it's restored, deploy with `--skip-cosign`:
-
-```bash
-fleet-runner deploy go_<repo> --skip-cosign
-```
-
-**Production images going through `deploy` right now are NOT
-cosign-verified.** This is a security degradation, not a stylistic
-choice — re-enable cosign as soon as the vault key is restored.
 
 ## fleet-runner
 
@@ -729,8 +723,11 @@ or health-check a static Pages site.
 | Webgateway      | `ssh -J root@0docker.com florin@10.10.10.10`                   |
 
 - **Builder LXC 108** is a Proxmox container on `0docker.com`. Hosts
-  per-service build workspaces at `/root/workspace/<repo>/` and the
-  `fleet-runner` binary.
+  per-service build workspaces at `/root/workspace/<repo>/`, the
+  `fleet-runner` binary, and (pilot, ADR-0035) Woodpecker CI
+  server+agent at `/opt/woodpecker/` — `docker compose ps` there to
+  check status; `.env` holds the generated secrets, not committed
+  anywhere.
 
   **AI-agent rule — always use a git worktree, never the shared
   workspace directly.** Multiple AI sessions (or a session + a human)
@@ -1042,24 +1039,28 @@ Tag *after* the commit, push *both*.
 **Canonical (only one right answer):**
 
 ```bash
-fleet-runner deploy go_<repo> \
-  --services /root/workspace/services-registry/services.json \
-  --skip-cosign
+fleet-runner deploy go_<repo>
 ```
 
-Two non-obvious flags above, both TEMPORARY (see "Temporary
-degradations" near the top of this file):
+No extra flags needed on Builder LXC 108 — both historical workarounds
+are resolved as of 2026-08-23:
 
-- `--services /root/workspace/services-registry/services.json` —
-  `raw.githubusercontent.com/.../services.json` is Fastly-cached with
-  `max-age=300`, so after a freshly-pushed `overrides.json` the
-  registry slice can lag 3–5 minutes. Pointing at the local copy on
-  LXC 108 sidesteps the cache. Apply the same flag to `nginx-render`
-  and any other subcommand that reads the registry. Remove when
-  `fleet-runner` defaults to the local copy.
-- `--skip-cosign` — vault's `cosign-signing-key` is currently empty;
-  signing is disabled fleet-wide. Remove when the vault key is
-  restored.
+- **Registry cache race** — `raw.githubusercontent.com/.../services.json`
+  is still Fastly-cached with `max-age=300`, but `fleet-runner` now
+  resolves the registry source itself: when `--services` isn't passed
+  and `/root/workspace/services-registry/services.json` exists, it
+  prefers that local working copy over the CDN automatically
+  (`ResolveServicesSource`, shipped 2026-05-21). An explicit
+  `--services <path>` still works if you ever need to force a
+  different source.
+- **Cosign signing** — restored fleet-wide; the vault's
+  `cosign-signing-key`, `cosign-signing-key-password`, and
+  `cosign-public-key` are all populated again (verified directly
+  against `go-fleet-secrets` on 2026-08-23). A plain `deploy` signs on
+  push and verifies on pull with no flag. `--skip-cosign` still exists
+  as an emergency-only bypass (vault unreachable, key mid-rotation) —
+  don't pass it by default; it prints a loud bypass warning and lands
+  an audit-log row precisely so it's never silently routine.
 
 **Post-deploy: re-render the vhost.** The embedded `nginx-render`
 step inside `deploy` often misses the new vhost due to the same
@@ -1067,9 +1068,7 @@ registry-fetch race. Until `fleet-runner deploy` folds in the local
 fetch (separate fix in flight), follow every new-service deploy with:
 
 ```bash
-fleet-runner nginx-render \
-  --services /root/workspace/services-registry/services.json \
-  --filter <slug> --push --reload
+fleet-runner nginx-render --filter <slug> --push --reload
 ```
 
 `fleet-runner deploy` is idempotent end-to-end. The pipeline is built
@@ -1148,15 +1147,17 @@ container is running. Don't declare done until both succeed.
 ### Recipe — Self-check before declaring "done"
 
 Three commands. Run all three. If anything in the category you touched
-is flagged, fix it before stopping. Pass `--services
-/root/workspace/services-registry/services.json` so a just-registered
-service doesn't get missed because of the 5-minute Fastly cache on
-`raw.githubusercontent.com`:
+is flagged, fix it before stopping. **Do not pass `--services`** to any
+of these three — `converge`, `audit`, and `state snapshot` don't accept
+that flag (confirmed on v0.7.11: `flag provided but not defined:
+-services`). They already read the registry correctly without it — see
+"Recipe — Deploying a service" above for why the local-copy race no
+longer needs a flag at all:
 
 ```bash
-fleet-runner converge       --services /root/workspace/services-registry/services.json
-fleet-runner audit --all    --services /root/workspace/services-registry/services.json
-fleet-runner state snapshot --services /root/workspace/services-registry/services.json
+fleet-runner converge
+fleet-runner audit --all
+fleet-runner state snapshot
 ```
 
 ### Recipe — Rolling out a blast-radius change (shared lib / shared dep)
@@ -1519,8 +1520,26 @@ entry.
 - Local workspace root: `/Users/live/Documents/Codex/2026-05-08/`.
   Sibling repos sit next to this one — read them directly when you
   need to understand a dependency.
-- CI: there is none. Husky pre-commit hooks + local `npm run smoke`
-  (Node repos) or `go test ./...` (Go repos) are the gate. Don't
-  scaffold GitHub Actions build workflows.
+- CI: self-hosted **Woodpecker CI** is live at
+  [https://ci.0exec.com](https://ci.0exec.com) on Builder LXC 108 (see
+  [ADR-0035](docs/adr/0035-self-hosted-ci-on-builder-lxc.md)) —
+  server + agent at `/opt/woodpecker/` on the LXC, capped at 2
+  concurrent workflows so it doesn't contend with `fleet-runner
+  deploy-all` batches on the same box. GitHub webhooks are wired
+  (OAuth App + nginx vhost reusing the `wildcard.0exec.com` cert);
+  pushes and PRs trigger `go build ./... && go test ./...` on every
+  activated repo — the same gate `fleet-runner deploy`'s pre-flight
+  already runs, now push-triggered instead of deploy-time-only. A
+  daily cron (`docker builder prune -af --filter unused-for=24h`,
+  3:15am) keeps the LXC's build-cache disk usage bounded. Fleet-wide
+  rollout is in progress (batches of `.woodpecker.yml` + repo
+  activation via the API, tracked via `git log` on this file / repo
+  PRs — no separate rollout ledger). Still don't scaffold GitHub
+  Actions build workflows — that's the billing model this exists to
+  avoid. Repos without their own `go.mod` (composite-pattern services
+  built on a shared `go_composite_runner` base image) don't get a
+  pipeline — there's no local Go source for `go build` to act on.
+- Supply chain: prefer npm packages ≥ 3 days old over `@latest` —
+  accept known CVEs over zero-day supply-chain injection.
 - Supply chain: prefer npm packages ≥ 3 days old over `@latest` —
   accept known CVEs over zero-day supply-chain injection.
