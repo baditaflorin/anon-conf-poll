@@ -34,6 +34,26 @@ canonical per-service scaffold (file-by-file templates for `main.go`,
 prompt you can feed Claude / ChatGPT / Gemini). Propagated to every
 fleet repo next to this file.
 
+## Risk tier — what needs extra care before you touch it
+
+Most changes are low-risk: the fleet's own tooling (probe-first
+deploy, rollback-on-`/selftest`-fail) is the safety net, so a plain
+`fleet-runner deploy <repo>` is enough. A few categories aren't
+covered by that net — check the relevant section *before* you act,
+not after something breaks fleet-wide:
+
+| Touching...                                             | Do this first |
+|-----------------------------------------------------------|----------------|
+| One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered. |
+| `safehttp`, middleware, auth, or the gateway               | `fleet-runner canary <repo>` first (bake + structured health/latency verdict) — see "Fleet-wide changes — modify 130 repos at once" in `FLEET.md`. Never a fleet-wide rollout on first touch here. |
+| `go-common` or a `go-fleet-*` primitive (has >1 consumer)   | See "Fleet-wide changes — change go-common, not consumers" below — one bad edit breaks every consumer at once. |
+| DNS records or secrets                                     | Read `RUNBOOK-UNATTENDED.md` first. DNS only via Hetzner Cloud API (`HCLOUD_TOKEN`) — never `dns.hetzner.com`. Secrets only live in `go-fleet-secrets` — never in env, repos, or `services.json`. |
+| `proxy_egress` in `overrides.json`                          | Read the `proxy_egress` section in `FLEET.md` first — it's not simply "on = safer": some upstreams 403 the proxy IPs, some services need it on to get an internet route at all. Direction depends on the upstream. |
+| A SQLite-backed service                                    | The three mandatory rules under "SQLite safety" below aren't optional — read them first. |
+
+Not sure which tier something is? Default one tier higher and reach
+for `canary` before a broad rollout.
+
 ## Fleet at a glance
 
 ~220 service repos under `github.com/baditaflorin/*`. The canonical
@@ -802,6 +822,73 @@ or health-check a static Pages site.
 - **Dockerhost VM** runs the service containers. Compose dirs:
   `/opt/services/<repo>/`, `/opt/security/<repo>/`,
   `/home/ubuntu_vm/pentest/<repo>/`.
+- **OpenObserve LXC 106** (same SSH access pattern as Builder LXC 108
+  above, just a different `pct exec` target id; image
+  `openobserve/openobserve:v0.14.7` + bitnami/postgresql metastore) is
+  the fleet's log aggregator. Root creds live in the LXC's own
+  `docker-compose.yml` — see private `fleet-state/OPS.md` under
+  "OpenObserve root credentials", never repeat them in a service repo.
+  Retention is `ZO_COMPACT_DATA_RETENTION_DAYS = 30` (dropped from 90
+  on 2026-08-23 — no SLA requires longer right now; it applies fleet-
+  wide across every stream and takes effect promptly on restart, not
+  gradually).
+
+  **Query it with `bin/oo`, not hand-rolled curl.** `services-registry/bin/oo`
+  is the deterministic CLI (`logs`, `grep`, `errors`, `since-redeploy`,
+  `context`, `compare`, `restarts`, `rate`, `versions`, `new`, `check`,
+  `save`/`saved`/`run`, `summary`, `link`, `containers`, `hosts`, `tail`,
+  `query`, `streams`, `stream-info`) — run `bin/oo` with no args for full
+  usage rather than duplicating it here; the script's own header comment
+  is the source of truth for what each command does and its defaults, and
+  this list will drift if a command gets added/renamed without this line
+  being touched too. Needs `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` /
+  `OPENOBSERVE_HOST` set (see `bin/fleet-runner.env.example`; real values
+  in `fleet-state/OPS.md`). Proxies every request through the bastion via
+  SSH — LXC 106 is only reachable from inside the `0docker.com` private
+  LAN. `query`/`run` default to compact JSON with OpenObserve's own
+  response metadata stripped (pass `--pretty` for indented + full
+  metadata) — the other commands already print hand-formatted plain text,
+  no JSON envelope. Every user-supplied value going into a WHERE clause is
+  SQL-escaped (`sql_escape` in the script) and every request normalizes
+  failures into a consistent, non-silent error shape (`_oo_error` — never
+  a raw traceback, never indistinguishable from "zero results") — copy
+  both patterns if you add a new command that talks to OpenObserve.
+
+  **Two streams**, both queryable the same way:
+  - `default` — OS-level syslog/journald, forwarded via plain `rsyslog`
+    (`omfwd` in `/etc/rsyslog.d/*.conf`) from the dockerhost VM, the
+    nginx proxy manager VM, and the LXC itself. sshd, kernel, cron,
+    dockerd's own daemon events, and any systemd service that logs via
+    journald.
+  - `docker_logs` — **every container's stdout/stderr, fleet-wide**,
+    tagged `container_name` / `host` / `image` / compose labels. Added
+    2026-08-23 to close exactly the gap that bit an agent that night:
+    `docker logs` only shows the CURRENT container instance, so a
+    redeploy silently discards history. `docker logs` and the
+    `json-file` driver are UNCHANGED on every service — this is a
+    second, independent path, not a replacement.
+
+  **How `docker_logs` gets populated**: a small Vector (`timberio/vector`,
+  pinned by digest) container named `vector-log-shipper` runs at
+  `/opt/observability/vector-log-shipper/` on every docker host (as of
+  2026-08-23: the dockerhost VM and the prod docker host). It reads
+  every container's logs via the Docker socket — the same read path
+  `docker logs` uses — and ships a copy to OpenObserve; it does not
+  touch each container's own logging driver or config, so nothing about
+  existing services changes, and no per-service compose edits were
+  needed. New containers are picked up automatically. **Gotcha found
+  wiring this up**: Vector 0.57.0's `${VAR}` env-var interpolation does
+  not reliably substitute inside the `http` sink's `uri`/`auth.*`
+  fields in this image — config loads fine but every request fails
+  with "invalid uri character" / 401. Don't fight it: render
+  `vector.toml` with real values baked in before deploying (a plain
+  template + `sed`/similar is enough) rather than relying on Vector's
+  own interpolation for those fields.
+
+  Adding a **new** docker host to the fleet should get a
+  `vector-log-shipper` too, following the same compose shape (see the
+  existing deployments as the reference) — this isn't automated by
+  `fleet-runner` yet.
 - **Webgateway** runs nginx (the public TLS terminator) and the
   keystore-aware `auth_request` flow. vhosts live as **regular files**
   in `/etc/nginx/sites-enabled/<host>.{http,https}.conf` (NOT symlinks

@@ -1,4 +1,9 @@
 #!/usr/bin/env sh
+# Docs-only commits (just CLAUDE.md, the fleet-wide canonical doc sync)
+# skip the full check suite below — it has nothing to check.
+if [ "$(git diff --cached --name-only)" = "CLAUDE.md" ]; then
+  exit 0
+fi
 set -eu
 
 npm run fmt:check
