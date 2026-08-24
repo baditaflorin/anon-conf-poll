@@ -1,4 +1,19 @@
 #!/usr/bin/env sh
+zero="0000000000000000000000000000000000000000"
+_skip_full=true
+while read -r _local_ref _local_oid _remote_ref _remote_oid; do
+  if [ "$_remote_oid" = "$zero" ] || [ "$_local_oid" = "$zero" ]; then
+    _skip_full=false
+    continue
+  fi
+  _changed="$(git diff --name-only "$_remote_oid" "$_local_oid" 2>/dev/null || true)"
+  if [ -n "$_changed" ] && printf '%s\n' "$_changed" | grep -qvE '^(CLAUDE\.md|\.githooks/.*)$'; then
+    _skip_full=false
+  fi
+done
+if [ "$_skip_full" = true ]; then
+  exit 0
+fi
 set -eu
 
 make test
