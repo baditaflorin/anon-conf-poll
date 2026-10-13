@@ -1298,6 +1298,16 @@ are resolved as of 2026-08-23:
   touched. The check only fetches: it moves
   `refs/remotes/origin/main` and adds objects, and never changes the
   checkout's working tree, index or HEAD.
+  Since go_fleet_runner v0.7.319 the decisions `deploy` takes
+  from the registry itself (the deploy shape: compose project or
+  Coolify; the `proxy_egress` rule; the wildcard-certificate lookup)
+  read it through the same check, and stop instead of falling through
+  when the registry cannot be used: the checkout cannot be verified and
+  neither `origin/main` nor the CDN can be read, or the bytes are not
+  valid JSON. A workspace root chosen with `FLEET_RUNNER_WORKSPACE_ROOT`
+  is read as it is, and an explicit `--services <path>` does not steer
+  those three decisions. `clusters.json` placement is not yet verified
+  (go_fleet_runner `docs/registry-checkout-readers.md`).
 - **Cosign signing** — restored fleet-wide; the vault's
   `cosign-signing-key`, `cosign-signing-key-password`, and
   `cosign-public-key` are all populated again (verified directly
