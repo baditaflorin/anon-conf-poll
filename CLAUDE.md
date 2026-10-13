@@ -1306,8 +1306,17 @@ are resolved as of 2026-08-23:
   neither `origin/main` nor the CDN can be read, or the bytes are not
   valid JSON. A workspace root chosen with `FLEET_RUNNER_WORKSPACE_ROOT`
   is read as it is, and an explicit `--services <path>` does not steer
-  those three decisions. `clusters.json` placement is not yet verified
-  (go_fleet_runner `docs/registry-checkout-readers.md`).
+  those three decisions. Since go_fleet_runner v0.7.336 `clusters.json` is
+  read the same way by everything that acts on the host it picks
+  (`deploy`, `deploy-authorized`, `deploy-all`'s gate, `placement-plan`,
+  `nginx-render`'s pools and the pool tools, `stage`, `port-heal
+  --reconcile` (its placement half), `drift`, `render-compose`,
+  `dns-heal`, `compose-image-heal`) and, since v0.7.343, by
+  `audit compose-drift`. The file may be absent (a 404 from the CDN
+  means no placement), but a checkout that cannot be verified while the
+  CDN cannot be read stops the command. The other audit and report verbs
+  still read the working tree (go_fleet_runner
+  `docs/registry-checkout-readers.md`).
 - **Cosign signing** — restored fleet-wide; the vault's
   `cosign-signing-key`, `cosign-signing-key-password`, and
   `cosign-public-key` are all populated again (verified directly
