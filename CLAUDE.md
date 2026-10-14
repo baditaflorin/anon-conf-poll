@@ -18,7 +18,8 @@ wins — refresh and re-propagate, don't fork it.
 > (via `git show origin/main:<file>` or a fresh
 > `git worktree add … origin/main`). The shared
 > `/root/workspace/<repo>/` working tree is whatever the last (often
-> parallel) agent left it — routinely **months stale**. Acting on it
+> parallel) agent left it — usually close to `origin/main`, but it can
+> silently lag or sit on a leftover branch. Acting on it
 > ships old code, opens PRs against already-fixed bugs, and lets
 > concurrent agents stomp each other. `fleet-runner build-test` runs
 > against the working tree and is NOT freshness-correct — confirm any
@@ -111,7 +112,7 @@ not after something breaks fleet-wide:
 | One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered. |
 | `safehttp`, middleware, auth, or the gateway               | `fleet-runner deploy-all --repos <lowest-blast-radius-repo>,<others> --canary 1 --soak 90s --gate-no-restarts` first (staged canary + gate; `--repos` order is rollout order; see `fleet-runner deploy-all --help`). Never a fleet-wide rollout on first touch here. |
 | `go-common` or a `go-fleet-*` primitive (has >1 consumer)   | See "Fleet-wide changes — change go-common, not consumers" below — one bad edit breaks every consumer at once. |
-| DNS records or secrets                                     | Read `RUNBOOK-UNATTENDED.md` first. DNS only via the Hetzner Cloud API (`go-fleet-dns-sync` reads vault entry `hcloud_token`, env fallback `HCLOUD_TOKEN`; `fleet-runner deploy` reads `HETZNER_TOKEN`) — never `dns.hetzner.com`. Secrets of record live only in `go-fleet-secrets`; never commit them to repos, compose files or `services.json`. `fleet-runner` reads `HETZNER_TOKEN` from its own process env. |
+| DNS records or secrets                                     | Read `RUNBOOK-UNATTENDED.md` first. DNS only via the Hetzner Cloud API (`go-fleet-dns-sync` reads vault entry `hcloud_token`, env fallback `HCLOUD_TOKEN`; `fleet-runner deploy` reads `HETZNER_TOKEN`) — never `dns.hetzner.com`. Secrets originate in `go-fleet-secrets`; never commit them to repos, compose files or `services.json`. `fleet-runner deploy` materializes the values a service needs into a mode-600 per-service `.env` on the dockerhost and into container env, so never print or copy it. `fleet-runner` reads `HETZNER_TOKEN` from its own process env. |
 | `proxy_egress` in `overrides.json`                          | Read the `proxy_egress` section in `FLEET.md` first — it's not simply "on = safer": some upstreams 403 the proxy IPs, some services need it on to get an internet route at all. Direction depends on the upstream. |
 | A SQLite-backed service                                    | The three mandatory rules under "SQLite safety" below aren't optional — read them first. |
 
@@ -206,13 +207,14 @@ mesh.
 | `kind`      | What it is                                  | Has port? | `/health`? | Workspace on LXC? | Bumpable version? | Counted in `fleet-runner health` / `smoke` / `deploy`? |
 |-------------|---------------------------------------------|-----------|------------|-------------------|--------------------|--------------------------------------------------------|
 | `container` | Container service (compose or Coolify)      | yes       | yes        | yes               | yes                | yes                                                    |
-| `static`    | Static GitHub Pages site                    | no        | no         | no                | no                 | **no** — has its own `fleet-runner pages-audit`        |
+| `static`    | Static GitHub Pages site                    | no        | no         | yes (container operations skip it) | no (exception: `pentest-dashboard`) | **no** — has its own `fleet-runner pages-audit`        |
 
 <!-- anchor id=kind-static-pages-audit repo=go_fleet_runner symbol=verb:pages-audit verified=6bebc4351 digest=sha256:1f393614de6c9d4c4f37d3cf00e216c5b25d9941a7b46a8b87e5977a595f8ab0 on=2026-10-12 -->
 
 If this repo's `service.yaml` (or registry entry) says `kind: static`,
-**stop looking for a Dockerfile, a port, or Go code**. Pages services
-are HTML/CSS/JS published by GitHub Pages CI — there is no container
+**trust `kind`, not the file layout**: such a repo normally has no
+Dockerfile, port, or Go code (a few do, e.g. `pentest-dashboard`). Pages
+services are HTML/CSS/JS published by GitHub Pages CI — there is no container
 to deploy and no `/health` to probe.
 
 ### Axis 2 — `mesh` (which network + auth domain)
@@ -291,8 +293,8 @@ further (e.g. needs a browser engine, needs paid threat intel).
 | `services-registry`   | canonical catalog (services.json + FLEET.md + this file)                            | PUBLIC     |
 | `go-common`           | shared Go lib — SSRF-safe HTTP, jsbundle recovery, **apikey client**, ua, middleware | PUBLIC |
 | `mesh-common`         | shared TS/React runtime for the `mesh-*` P2P fleet (see "mesh-* P2P fleet" below)   | PUBLIC     |
-| `go-fleet-persona`    | cross-app + cross-origin display-identity service (`persona.0exec.com`)             | PUBLIC     |
-| `go-apikey-service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`                | varies     |
+| `go-fleet-persona`    | cross-app + cross-origin display-identity service (`persona.0exec.com`)             | PRIVATE    |
+| `go_apikey_service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`                | PRIVATE    |
 | `go-catalog-service`  | renders services.json into `catalog.0exec.com`                                      | PRIVATE    |
 | `go_fleet_runner`     | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)                   | PRIVATE    |
 | `0crawl-platform`     | bootstrap/reference IaC (certbot DNS-01 hooks, batch vhost-drift scripts, reference nginx templates; bootstrap/ and compose/ are README-only); its nginx templates are a diverged reference copy, the deployed templates are embedded in fleet-runner | PRIVATE |
@@ -428,9 +430,11 @@ Rate limits: 60 reads/min/IP and 30 writes/hour/(IP, anonId) by default;
   on `mesh-common ≥ 0.10.1`. No per-app code needed to surface the panel.
 - HTML/CSS/JS published from `docs/`. Build locally with `npm run build`;
   commit `docs/` and push. GH Pages serves it within ~1 min.
-- Pre-commit hook runs `bash scripts/smoke.sh` (vitest unit tests +
-  `vite build` + sanity-check `docs/index.html`). **Never `--no-verify`**;
-  if it fails, run `npm run fmt` and re-commit.
+- Pre-commit hook (`.githooks/pre-commit`) runs `npm run fmt:check` and
+  `npm run typecheck`; the pre-push hook adds `npm run smoke`
+  (`bash scripts/smoke.sh`: vitest unit tests when present + `npm run build`
+  + sanity-check of `docs/index.html`, `docs/404.html` and `docs/assets`).
+  **Never `--no-verify`**; if a hook fails, run `npm run fmt` and re-commit.
 - `useFleetPersona` is the canonical way to read/write the user's display
   name — never roll your own `myName` localStorage key for new apps.
   Existing apps can migrate at their own pace; the panel is opt-in for
@@ -770,8 +774,8 @@ Binary at `/usr/local/bin/fleet-runner` on **Builder LXC 108**. From
 any workspace dir on that LXC:
 
 ```
-fleet-runner health [--insecure]             # /health on all live container services (skips kind=static)
-fleet-runner smoke  [--insecure]             # GET example_url on all container services
+fleet-runner health [--insecure]             # GET health_url of every service the services-dashboard API lists (no kind filter)
+fleet-runner smoke  [--insecure]             # GET example_url of every service the services-dashboard API lists that has one
 fleet-runner pages-audit                     # verify pages_url 200s for every kind=static entry
 fleet-runner build-test                      # go test ./... in every kind=container,language=go workspace
 fleet-runner update-dep <mod@ver>            # bump dep across all language=go repos (or a subset: --repos a,b / --filter mesh=…,category=…,ids=a;b)
@@ -896,9 +900,12 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
   Builder LXC disk doesn't accumulate stale checkouts.
 
   **AI-agent rule — pull often, push often. Never trust the
-  working-tree state as truth.** The shared workspace's HEAD is
-  whatever the last session left it as, often months stale. Three
-  failure modes this causes, all observed live 2026-05-16:
+  working-tree state as truth.** The shared workspace is converged
+  to `origin` hourly by `repo-converge.timer` on Builder LXC 108
+  (checkouts with active work, unpushed commits or a detached HEAD
+  are skipped), so HEADs are usually fresh, but a skipped checkout
+  can still lag `origin/main`. Three
+  failure modes a stale checkout causes, all observed live 2026-05-16:
 
   1. **Wrong-direction drift detection.** Reading
      `/root/workspace/<repo>/service.yaml` as "the intended
@@ -1009,9 +1016,11 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
   existing deployments as the reference) — this isn't automated by
   `fleet-runner` yet.
 - **Webgateway** runs nginx (the public TLS terminator) and the
-  keystore-aware `auth_request` flow. vhosts live as **regular files**
-  in `/etc/nginx/sites-enabled/<host>.{http,https}.conf` (NOT symlinks
-  to sites-available — `sites-available/` is unused). Edit
+  keystore-aware `auth_request` flow. vhosts live in
+  `/etc/nginx/sites-enabled/<host>.{http,https}.conf`. Most are regular
+  files, but some are symlinks into `sites-available/`, and
+  `fleet-runner nginx-render --push` writes to both directories, so
+  `sites-available/` is in use. Edit
   `sites-enabled/` directly for one-offs, or re-render via
   `fleet-runner nginx-render --push`. Surprised an agent for ~10min
   in the 2026-05-17 batch (ADR-0023 gap 5).
@@ -1021,6 +1030,7 @@ Operational topology, env-var names and rotation procedures are in **private**
 `fleet-state/OPS.md`; credential values live in `go-fleet-secrets` or
 protected host files, never in OPS.md — never commit SSH targets, IPs, or
 tokens to service repos.
+  
 
 ## Session continuity — handing off to a fresh agent
 
@@ -1275,8 +1285,8 @@ fleet-runner deploy go_<repo>
 points; when deployment authority is required
 (`FLEET_DEPLOYMENT_AUTHORITY_MODE=required`), plain `deploy` is refused.
 
-No extra flags needed on Builder LXC 108 — both historical workarounds
-are resolved as of 2026-08-23:
+On Builder LXC 108 the registry cache race needs no flag; cosign signing
+is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
 
 - **Registry cache race** — `raw.githubusercontent.com/.../services.json`
   is still Fastly-cached with `max-age=300`, so `fleet-runner` resolves
@@ -1317,13 +1327,15 @@ are resolved as of 2026-08-23:
   CDN cannot be read stops the command. The other audit and report verbs
   still read the working tree (go_fleet_runner
   `docs/registry-checkout-readers.md`).
-- **Cosign signing** — restored fleet-wide; the vault's
-  `cosign-signing-key`, `cosign-signing-key-password`, and
-  `cosign-public-key` are all populated again (verified directly
-  against `go-fleet-secrets` on 2026-08-23). A plain `deploy` signs on
-  push and verifies on pull with no flag. `--skip-cosign` still exists
-  as an emergency-only bypass (vault unreachable, key mid-rotation) —
-  don't pass it by default. `deploy` refuses it without a reason
+- **Cosign signing** — degraded as of 2026-10-13: the vault's
+  `cosign-public-key` is populated (`fleet-runner verify-image` still
+  verifies previously signed images), but the vault signing key is
+  empty, so deploys run with `--skip-cosign` and the images they push
+  are unsigned. Once the vault entries are restored, a plain `deploy`
+  signs on push and verifies on pull with no flag. `--skip-cosign` is
+  an emergency-only bypass (vault unreachable, key mid-rotation, signing
+  key empty) — pass it only while signing is unavailable. `deploy`
+  refuses it without a reason
   (`--skip-cosign-reason "<why>"` or `FLEET_SKIP_COSIGN_REASON`); it prints
   a loud bypass warning and lands an audit-log row that records the reason,
   precisely so it's never silently routine.
@@ -1403,8 +1415,7 @@ docker buildx build --platform linux/amd64 --provenance=false \
 
 # 2. Roll the container forward on the dockerhost
 ssh -J root@0docker.com ubuntu_vm@10.10.10.20 '
-  cd /opt/services/go_<repo>/src
-  git pull origin main
+  cd <compose-dir>   # the container's com.docker.compose.project.working_dir label (read it with `docker inspect`); usually /opt/services/go_<repo>, sometimes go-<slug>
   sudo docker compose pull && sudo docker compose up -d
 '
 
@@ -1412,12 +1423,14 @@ ssh -J root@0docker.com ubuntu_vm@10.10.10.20 '
 #    <fqdn> = host of the service url in services.json
 #    (<slug>.0crawl.com or <slug>.0exec.com). Compute the sha locally in
 #    the service repo (after `git fetch origin`); $SHA is expanded before
-#    ssh, not on the gateway.
+#    ssh, not on the gateway. No nginx reload: the gateway serves the file
+#    per request (alias, Cache-Control: no-store), and every reload costs a
+#    full config parse and a new worker generation (fleet-runner stopped
+#    reloading here in go_fleet_runner v0.7.341).
 SHA=$(git rev-parse --short origin/main)
 ssh -J root@0docker.com florin@10.10.10.10 "
   echo '{\"sha\":\"$SHA\",\"version\":\"<version>\",\"deployed_at\":\"'\$(date -u +%FT%TZ)'\"}' \
     | sudo tee /etc/nginx/deploy-meta/<fqdn>.json
-  sudo nginx -s reload
 "
 
 # 4. Smoke test
@@ -1459,7 +1472,7 @@ proves each still builds.
 fleet-runner rollout \
   --dep github.com/baditaflorin/go-common@<LATEST> \
   --grep 'client\.JSProxy(DOM)?\(|GetRendered\(|FetchNetwork\(|RenderJS' \
-  --graph-callers-of go-js-proxy,go-js-proxy-network,infrastructure-fetch-cache
+  --graph-callers-of js-proxy,js-proxy-network,infrastructure-fetch-cache
 
 # 2. APPLY: bump + build/test each consumer, land one auto-merge PR per repo,
 #    emit a fleet-state/sweeps manifest (revertable via sweep-rollback).
@@ -1486,8 +1499,9 @@ Three non-obvious rules:
   For intra-mesh deps the **code-grep is authoritative** — that's why rollout
   unions grep with the graph instead of trusting the graph alone.
 - **`--clone` first** (or run on LXC 108 where the workspace is kept
-  complete): the grep is only as complete as the local checkouts, and the
-  registry has ~110 repos that may not be cloned on a given host. rollout
+  nearly complete): the grep is only as complete as the local checkouts, and
+  the registry has about 500 repos as of 2026-10-13 that may not all be
+  cloned on a given host. rollout
   reports a "code-grep is PARTIAL" warning when repos are missing.
 - **Always pass the actual LATEST dep version**, never a stale literal —
   `go get dep@vOld` on a repo already ahead silently *downgrades* it.
@@ -1536,7 +1550,9 @@ rails — every gate is a clearly-named abort, never silent:
 - Test gate — `go test ./...` (or `npm test`) must pass.
 - `/selftest` gate — post-deploy, the service's `/selftest` must
   return 200. `/health` only proves the binary booted; `/selftest`
-  exercises the patched code path.
+  exercises the patched code path only when the service registers a
+  `selftest.Suite` (otherwise go-common/server returns a default 200
+  stub that proves no more than `/health`).
 - **Auto-rollback** — on `/selftest` fail, force-push origin back to
   the pre-fix SHA AND redeploy the previous image.
 
@@ -1626,8 +1642,9 @@ for the canonical pattern.
    tag -d <ver>` then re-run bump-version.
 
 9. **`./binary &` smoke tests on Builder LXC 108.** Don't. The builder
-   is a build host and `fleet-runner` host — it is **not** a service
-   host. When an agent runs `go build && ./binary &` inside
+   is a build/CI and `fleet-runner` host (Woodpecker, buildkit, registry
+   mirror, fleet-triage) — it is **not** a host for registered fleet
+   services. When an agent runs `go build && ./binary &` inside
    `/root/workspace/<repo>/` to "quickly check the handler responds,"
    the binary backgrounds, the agent's SSH session ends, and the
    process becomes an orphan (`PPid=1`) listening on whichever port it
@@ -1679,20 +1696,28 @@ curl -s http://<dockerhost>:18205/ | grep -E 'render_shed|upstream_errors'
 ```
 
 For the fleet-standard signal, `loadshed_shed_total{service,gate}` is
-emitted on `/metrics` by every service using `go-common/loadshed` — a
-sustained nonzero rate is the "this box is shedding load" alert.
+emitted on `/metrics` by services that wire `promx.AutoWire` for
+`go-common/loadshed` gates, once a gate has shed at least once (until
+then only `loadshed_admitted_total` and `loadshed_in_flight` appear). A
+sustained nonzero rate is the "this box is shedding load" signal; no
+Prometheus alert rule uses it as of 2026-10-13.
 
 <!-- anchor id=loadshed-loadshed-shed-total repo=go-common symbol=regex:promx/loadshed.go#loadshed_shed_total verified=879bbaa1c digest=sha256:9b6e372a22aea8df5258e24235627c7efd149b046ecd34d5e0b5a70cd8bda9c2 on=2026-10-12 -->
 
 **Live mitigation (no rebuild).** The render cap is env-tunable. Lower
-`MAX_RENDER_INFLIGHT` on the host to shed sooner and shrink the pile-up,
-then bounce the container — no image rebuild, no `fleet-runner deploy`:
+`MAX_RENDER_INFLIGHT` to shed sooner and shrink the pile-up, then
+re-render and restart the container — no image rebuild, no
+`fleet-runner deploy`. The cap is pinned in the service's generated
+`docker-compose.override.yml`, which wins over `.env`, so the change goes
+through the service's `overrides.json` entry in services-registry:
 
 ```bash
-# On the dockerhost, in the service's compose dir:
-cd /opt/services/go_infrastructure_fetch_cache
-sed -i 's/^MAX_RENDER_INFLIGHT=.*/MAX_RENDER_INFLIGHT=24/' .env   # or add it
-sudo docker compose up -d   # picks up the new env; no pull/rebuild
+# On the dockerhost, in the service's compose dir (read-only check):
+cd /opt/services/go-infrastructure-fetch-cache && grep MAX_RENDER_INFLIGHT docker-compose.override.yml   # the pinned cap
+# Editing .env does NOT change it, and `sudo docker compose up -d` keeps
+# the pinned value. Edit overrides.json in services-registry, merge it to
+# main, then on the builder (fleet-runner is not installed on the dockerhost):
+fleet-runner render-compose infrastructure-fetch-cache --push --restart
 ```
 
 Once the pile-up drains, the stalled `/selftest` probes pass and deploys
@@ -1835,22 +1860,32 @@ entry.
 - CI: self-hosted **Woodpecker CI** is live at
   [https://ci.0exec.com](https://ci.0exec.com) on Builder LXC 108 (see
   [ADR-0035](docs/adr/0035-self-hosted-ci-on-builder-lxc.md)) —
-  server + agent at `/opt/woodpecker/` on the LXC, capped at 2
-  concurrent workflows so it doesn't contend with `fleet-runner
-  deploy-all` batches on the same box. GitHub webhooks are wired
+  server + agent at `/opt/woodpecker/` on the LXC, capped at 3
+  concurrent workflows per agent (two agents on the LXC, 6 in total; a
+  load-aware controller admits capacity from other hosts) so it doesn't
+  contend with `fleet-runner deploy-all` batches on the same box.
+  GitHub webhooks are wired
   (OAuth App + nginx vhost reusing the `wildcard.0exec.com` cert);
-  pushes and PRs trigger `go build ./... && go test ./...` on every
-  activated repo — the same gate `fleet-runner deploy`'s pre-flight
-  already runs, now push-triggered instead of deploy-time-only. A
-  daily cron (`docker builder prune -af --filter unused-for=24h`,
-  3:15am) keeps the LXC's build-cache disk usage bounded. Fleet-wide
-  rollout is in progress (batches of `.woodpecker.yml` + repo
-  activation via the API, tracked via `git log` on this file / repo
-  PRs — no separate rollout ledger). Still don't scaffold GitHub
+  pull requests and pushes to the default branch trigger CI on every
+  activated repo (a push to a PR branch is covered by its PR run, and
+  the canonical template skips docs-only `CLAUDE.md`/`AGENTS.md`
+  changes). Most repos run `go build ./... && go test ./...` — the same
+  gate `fleet-runner deploy`'s pre-flight already runs — and the
+  non-Go repos run their own checks. A
+  cron every six hours (`docker builder prune -af --filter
+  unused-for=6h`, at :15), a weekly prune and disk-pressure guard
+  scripts keep the LXC's build-cache disk usage bounded. Nearly every
+  `go.mod` repo carries a `.woodpecker.yml`; migrating repos to the PR
+  plus default-branch trigger template runs through
+  `bin/woodpecker_trigger_rollout.py`, tracked via `git log` on this
+  file / repo PRs — no separate rollout ledger. Still don't scaffold GitHub
   Actions build workflows — that's the billing model this exists to
   avoid. Repos without their own `go.mod` (composite-pattern services
-  built on a shared `go_composite_runner` base image) don't get a
-  pipeline — there's no local Go source for `go build` to act on.
+  built on a shared `go_composite_runner` base image) get no
+  `go build`/`go test` pipeline — there's no local Go source for
+  `go build` to act on; most have no pipeline at all, and a few carry a
+  wrapper-validation `.woodpecker.yml` instead (for example
+  `go_merchant_profile`).
 - Supply chain: prefer npm packages ≥ 3 days old over `@latest` —
   accept known CVEs over zero-day supply-chain injection.
 - Supply chain: prefer npm packages ≥ 3 days old over `@latest` —
@@ -1872,4 +1907,4 @@ fleet-runner change-receipts --sort prs --top 50
 
 <!-- anchor id=release-receipts-change-receipts repo=go_fleet_runner symbol=verb:change-receipts verified=6bebc4351 digest=sha256:eaa3a86295d8c67e4f365a142452f7130e41755abcc05b3908232a72930cde6f on=2026-10-12 -->
 
-That command reports commits, PR-number receipts, changelog-backed version counts and latest activity per service (add `--json` to also get each service's current version). Static applications follow the same changelog + code receipt chain, using their published Pages build as the deployment receipt.
+That command reports commits, PR-number receipts, changelog-backed version counts and latest activity per service (add `--json` to also get each service's current version). Static applications are outside the changelog chain (almost none carry a `CHANGELOG.md` or version) and `change-receipts` skips them by default (its `-filter` defaults to `kind=container`); the published GitHub Pages build for the commit is the available deployment evidence, but nothing records it as a receipt.
