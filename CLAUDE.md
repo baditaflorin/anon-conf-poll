@@ -666,6 +666,12 @@ from go_fleet_runner PR #82** — earlier binaries silently rendered the
 caps in its base `docker-compose.yml` opts OUT of overlay injection with
 `"compose_self_managed": true`.
 
+For a service whose published ports must stay private to its cluster's Dockerhost,
+set `"compose_bind_to_gateway_upstream": true` in its per-slug override. The
+renderer resolves the address from private cluster configuration; do not put an
+internal IP in this public repository. An explicit `render-compose
+--bind-address` still overrides the per-service setting for that invocation.
+
 > **Operational gotcha:** a live `docker update --cpus N` on a running
 > container **reverts** to the rendered value on the next
 > `render-compose` / `deploy` unless the per-slug `cpus` override is set
@@ -799,7 +805,7 @@ fleet-runner stats                           # audit log + token usage summary
 ```
 
 <!-- anchor id=fleet-runner-verbs-health repo=go_fleet_runner symbol=verb:health verified=6bebc4351 digest=sha256:24e024c191e54f6cd107d1debc945163ed3b485d9bfebdeaf5fb15dee68f80cb on=2026-10-12 -->
-<!-- anchor id=bootstrap-compose-scaffold-compose repo=go_fleet_runner symbol=verb:scaffold-compose verified=6bebc4351 digest=sha256:daff9c6da2423c153cec90dc3862e5abfc9d5904f30ca1cde7abbff16f91b2e6 on=2026-10-12 -->
+<!-- anchor id=bootstrap-compose-scaffold-compose repo=go_fleet_runner symbol=verb:scaffold-compose verified=101e9fb9f digest=sha256:22ed1710cf05923377e67ccb33ec2b670dc02eddd9487f6bbfd18e26734e81f1 on=2026-10-14 -->
 
 `new-service` does not set GitHub topics. `bin/generate.py` registers a repo
 only with a `mesh-<mesh>` topic, and also reads `lang-<x>` (defaults to go on
@@ -1133,7 +1139,10 @@ After install, the canonical examples shorten to e.g.
 `fleet-runner deploy go_<repo>`. The shim is thin — it forwards argv, plus
 the fixed whitelist of token/env variables in the `for v in` loop of
 `bin/fleet-runner-shim`, over SSH to LXC 108 — so output, exit codes, and
-prompts behave as on the LXC. Source: [`services-registry/bin/fleet-runner-shim`](bin/fleet-runner-shim).
+prompts behave as on the LXC. The shim also sends caller identity
+(`FLEET_CALLER_HOST`/`USER`/`AGENT`/`SESSION`, derived from the local
+hostname, user, `CLAUDE_AGENT_NAME` and `CLAUDE_SESSION_ID` when not already
+set) so the remote audit log can tell laptops and agents apart. Source: [`services-registry/bin/fleet-runner-shim`](bin/fleet-runner-shim).
 
 Some verbs need env vars sourced (notably the `key …` family needs
 `APIKEY_SERVICE_URL` + `APIKEY_SERVICE_ADMIN_TOKEN`, and
@@ -1315,8 +1324,14 @@ is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
   when the registry cannot be used: the checkout cannot be verified and
   neither `origin/main` nor the CDN can be read, or the bytes are not
   valid JSON. A workspace root chosen with `FLEET_RUNNER_WORKSPACE_ROOT`
-  is read as it is, and an explicit `--services <path>` does not steer
-  those three decisions. Since go_fleet_runner v0.7.336 `clusters.json` is
+  is read as it is. Since go_fleet_runner v0.7.492 an explicit
+  `deploy --services <path>` (and `--overrides <path>`) that names a file
+  outside the shared checkout is read as given for those three decisions
+  too, and for the service lookup and the vhost and compose override the
+  deploy renders (a file that cannot be read or parsed stops the deploy; it
+  never falls back to `origin/main`); one that names the checkout's own
+  file is replaced by the default, which is the verified registry.
+  Since go_fleet_runner v0.7.336 `clusters.json` is
   read the same way by everything that acts on the host it picks
   (`deploy`, `deploy-authorized`, `deploy-all`'s gate, `placement-plan`,
   `nginx-render`'s pools and the pool tools, `stage`, `port-heal
@@ -1813,7 +1828,9 @@ for `--skip-smoke`. Need a single client to skip the cache outside
 selftest? `safehttp.WithoutFetchCache()` (per-client) or
 `WithoutFetchCacheContext(ctx)` (per-request).
 
-<!-- anchor id=selftest-fetch-cache-probedirect repo=go_fleet_runner symbol=go:deploy_smoke_direct.go#probeDirect verified=6bebc4351 digest=sha256:70ceaa2aab6ca13b2963b2421a3114c81d9fe762c083af372666b97da2df5827 on=2026-10-12 -->
+Since go_fleet_runner v0.7.393, `deploy`'s direct smoke probe retries up to 5 times, 4 s apart, when a probe gets no HTTP response at all (curl prints `000`: connection refused, reset or timeout), so a container that is not listening yet is not rolled back for that; any HTTP status, including 4xx and 5xx, is judged on the first answer.
+
+<!-- anchor id=selftest-fetch-cache-probedirect repo=go_fleet_runner symbol=go:deploy_smoke_direct.go#probeDirect verified=101e9fb9f digest=sha256:9eb4e4a3eaa7e56651f227e3815e59452872711f8e19092ae6827f7dd0eb9ab4 on=2026-10-14 -->
 <!-- anchor id=selftest-fetch-cache-withoutfetchcachecontex repo=go-common symbol=go:safehttp/fetchcache.go#WithoutFetchCacheContext verified=879bbaa1c digest=sha256:e3bc237b8580886297b9c77d3ba644af87f623a770d6a6de9aeb7e66a724b6a9 on=2026-10-12 -->
 
 ## Per-repo `CHANGELOG.md` — capture what changed at each version
