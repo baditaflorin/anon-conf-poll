@@ -30,7 +30,7 @@ Per-service specifics (id, port, version, category) live in the
 repo's own `service.yaml` (plus optional `deploy.yaml` and
 `README.md`); mesh and slug are registry data (`services.json`,
 `slug.json`). This file is intentionally generic — it explains the
-*fleet*, not any one service.
+_fleet_, not any one service.
 
 ## Graph-first workflow
 
@@ -48,9 +48,9 @@ fleet-runner deps fleet-preflight --depth 1 --top 10 --since 24h --json
 fleet-runner ctx go-fleet-preflight --callers 3 --callees 3 --graph-since 24h --budget 1500 --workdir /root/workspace
 ```
 
-<!-- anchor id=graph-first-workflow-graph-context repo=go_fleet_runner symbol=verb:graph-context verified=6bebc4351 digest=sha256:8afc8bd71a2f98f7a648dceb9418ecbef26d537fc8817caf2d3e120fc6044e3d on=2026-10-12 -->
-<!-- anchor id=graph-first-workflow-deps repo=go_fleet_runner symbol=verb:deps verified=6bebc4351 digest=sha256:101210cc8bf29087966ee4208be474e74e653a10eba5efa059fc5e78f92857f8 on=2026-10-12 -->
-<!-- anchor id=graph-first-workflow-ctx repo=go_fleet_runner symbol=verb:ctx verified=6bebc4351 digest=sha256:f7a62ec3c73911e2e840945f3e84d98761973b0d67400a105e99e5a2939dea36 on=2026-10-12 -->
+<!-- anchor id=graph-first-workflow-graph-context repo=go_fleet_runner symbol=verb:graph-context verified=c6f1ea927 digest=sha256:8afc8bd71a2f98f7a648dceb9418ecbef26d537fc8817caf2d3e120fc6044e3d on=2026-10-15 -->
+<!-- anchor id=graph-first-workflow-deps repo=go_fleet_runner symbol=verb:deps verified=c6f1ea927 digest=sha256:101210cc8bf29087966ee4208be474e74e653a10eba5efa059fc5e78f92857f8 on=2026-10-15 -->
+<!-- anchor id=graph-first-workflow-ctx repo=go_fleet_runner symbol=verb:ctx verified=c6f1ea927 digest=sha256:f7a62ec3c73911e2e840945f3e84d98761973b0d67400a105e99e5a2939dea36 on=2026-10-15 -->
 
 The `graph-context` result is a token-bounded, review-only agent brief. It
 contains the service identity, declared topology, bounded runtime evidence,
@@ -72,7 +72,7 @@ Use the result in this order:
    alongside the normal build, health, self-test, version, and gateway
    checks.
 
-<!-- anchor id=graph-first-workflow-explain repo=go_fleet_runner symbol=verb:explain verified=6bebc4351 digest=sha256:0f1eccdcbdb8e81597e07a40b4db06aeca2ca525da426ab342c376de2fd58d78 on=2026-10-12 -->
+<!-- anchor id=graph-first-workflow-explain repo=go_fleet_runner symbol=verb:explain verified=c6f1ea927 digest=sha256:0f1eccdcbdb8e81597e07a40b4db06aeca2ca525da426ab342c376de2fd58d78 on=2026-10-15 -->
 
 `graph-context`, `deps`, and `explain` use the canonical
 registry/graph ID (for example `fleet-preflight`). `ctx` accepts a
@@ -104,17 +104,17 @@ as the source.
 Most changes are low-risk: the fleet's own tooling (probe-first
 deploy, rollback-on-`/selftest`-fail) is the safety net, so a plain
 `fleet-runner deploy <repo>` is enough. A few categories aren't
-covered by that net — check the relevant section *before* you act,
+covered by that net — check the relevant section _before_ you act,
 not after something breaks fleet-wide:
 
-| Touching...                                             | Do this first |
-|-----------------------------------------------------------|----------------|
-| One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered. |
-| `safehttp`, middleware, auth, or the gateway               | `fleet-runner deploy-all --repos <lowest-blast-radius-repo>,<others> --canary 1 --soak 90s --gate-no-restarts` first (staged canary + gate; `--repos` order is rollout order; see `fleet-runner deploy-all --help`). Never a fleet-wide rollout on first touch here. |
-| `go-common` or a `go-fleet-*` primitive (has >1 consumer)   | See "Fleet-wide changes — change go-common, not consumers" below — one bad edit breaks every consumer at once. |
-| DNS records or secrets                                     | Read `RUNBOOK-UNATTENDED.md` first. DNS only via the Hetzner Cloud API (`go-fleet-dns-sync` reads vault entry `hcloud_token`, env fallback `HCLOUD_TOKEN`; `fleet-runner deploy` reads `HETZNER_TOKEN`) — never `dns.hetzner.com`. Secrets originate in `go-fleet-secrets`; never commit them to repos, compose files or `services.json`. `fleet-runner deploy` materializes the values a service needs into a mode-600 per-service `.env` on the dockerhost and into container env, so never print or copy it. `fleet-runner` reads `HETZNER_TOKEN` from its own process env. |
-| `proxy_egress` in `overrides.json`                          | Read the `proxy_egress` section in `FLEET.md` first — it's not simply "on = safer": some upstreams 403 the proxy IPs, some services need it on to get an internet route at all. Direction depends on the upstream. |
-| A SQLite-backed service                                    | The three mandatory rules under "SQLite safety" below aren't optional — read them first. |
+| Touching...                                               | Do this first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `safehttp`, middleware, auth, or the gateway              | `fleet-runner deploy-all --repos <lowest-blast-radius-repo>,<others> --canary 1 --soak 90s --gate-no-restarts` first (staged canary + gate; `--repos` order is rollout order; see `fleet-runner deploy-all --help`). Never a fleet-wide rollout on first touch here.                                                                                                                                                                                                                                                                                                           |
+| `go-common` or a `go-fleet-*` primitive (has >1 consumer) | See "Fleet-wide changes — change go-common, not consumers" below — one bad edit breaks every consumer at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| DNS records or secrets                                    | Read `RUNBOOK-UNATTENDED.md` first. DNS only via the Hetzner Cloud API (`go-fleet-dns-sync` reads vault entry `hcloud_token`, env fallback `HCLOUD_TOKEN`; `fleet-runner deploy` reads `HETZNER_TOKEN`) — never `dns.hetzner.com`. Secrets originate in `go-fleet-secrets`; never commit them to repos, compose files or `services.json`. `fleet-runner deploy` materializes the values a service needs into a mode-600 per-service `.env` on the dockerhost and into container env, so never print or copy it. `fleet-runner` reads `HETZNER_TOKEN` from its own process env. |
+| `proxy_egress` in `overrides.json`                        | Read the `proxy_egress` section in `FLEET.md` first — it's not simply "on = safer": some upstreams 403 the proxy IPs, some services need it on to get an internet route at all. Direction depends on the upstream.                                                                                                                                                                                                                                                                                                                                                             |
+| A SQLite-backed service                                   | The three mandatory rules under "SQLite safety" below aren't optional — read them first.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Not sure which tier something is? Default one tier higher and use a
 staged `deploy-all --canary 1 --soak ...` before a broad rollout.
@@ -139,7 +139,7 @@ fleet-runner graph-context <service-id>
 fleet-runner capacity --hosts dockerhost,domainscope-runtime
 ```
 
-<!-- anchor id=metrics-hub-capacity-capacity repo=go_fleet_runner symbol=verb:capacity verified=6bebc4351 digest=sha256:34625b8a9c4f41286ca2ee90a7aee6df9ff987c2532ec0c5abce79779c194069 on=2026-10-12 -->
+<!-- anchor id=metrics-hub-capacity-capacity repo=go_fleet_runner symbol=verb:capacity verified=c6f1ea927 digest=sha256:34625b8a9c4f41286ca2ee90a7aee6df9ff987c2532ec0c5abce79779c194069 on=2026-10-15 -->
 
 `capacity` rejects missing/down node telemetry, incomplete CPU/memory metrics,
 and insufficient available memory. Load per core above the preferred threshold
@@ -151,7 +151,7 @@ cluster/runtime ownership. A real placement/deploy still needs fresh
 preflight, rollback capture, image/container verification, `/health`,
 `/selftest`, `/version`, and gateway smoke. No telemetry means fail closed.
 
-<!-- anchor id=port-allocation-allocate-port repo=go_fleet_runner symbol=verb:allocate-port verified=6bebc4351 digest=sha256:e648e1c4bec458426872a913eea49e8a49e03595896e398c93ed4558030f7177 on=2026-10-12 -->
+<!-- anchor id=port-allocation-allocate-port repo=go_fleet_runner symbol=verb:allocate-port verified=c6f1ea927 digest=sha256:42ac3bb6e81c821223af548e75fda1cd84bb878ef13a800db619afe15456d5dc on=2026-10-15 -->
 
 Do not SSH several hosts to compare `uptime`/`free` when Metrics Hub covers the
 targets. Add a private node-exporter scrape target and wait for `up=1` if a host
@@ -167,7 +167,7 @@ non-empty explicit service allowlist, and `build-only` is excluded from
 placement. Change the policy and its schema in the same PR; do not hand-code a
 host decision in an agent or service repository.
 
-<!-- anchor id=host-placement-policy-states repo=services-registry symbol=json:schema/host-placement-policy.v1.json#/$defs/host/properties/state/enum verified=c3b320064 digest=sha256:21dbb1fa007b05e5c61c66b7739b86218c7d419f592fd36632d1ea9d7b513c41 on=2026-10-12 -->
+<!-- anchor id=host-placement-policy-states repo=services-registry symbol=json:schema/host-placement-policy.v1.json#/$defs/host/properties/state/enum verified=701b06ad4 digest=sha256:21dbb1fa007b05e5c61c66b7739b86218c7d419f592fd36632d1ea9d7b513c41 on=2026-10-15 -->
 
 ### Reading the registry — fetch a slice, not the full blob
 
@@ -177,17 +177,17 @@ only need IDs, names, ports, TRL, or URLs, **fetch a slice instead**
 — it's the same `raw.githubusercontent.com` path with a different
 filename. Sized for AI agents on a token budget.
 
-| URL suffix                | shape                                                    | size  | use when |
-|---------------------------|----------------------------------------------------------|-------|----------|
-| `services.ids.json`       | `[{"id": "a11y-quick"}, …]`                              | ~14 KB | "what services exist?" (sunset omitted) |
-| `services.names.json`     | `[{id, name}]`                                           | ~29 KB | pickers / menus |
-| `services.minimal.json`   | `[{id, name, mesh, kind, category, language, trl, url}]`| ~97 KB | catalog overview |
-| `services.urls.json`      | `[{id, url, health_url, example_path, auth_help}]`      | ~119 KB | building Open / smoke links |
-| `services.trl.json`       | `[{id, trl, trl_ceiling, trl_assessed_at, …}]`          | ~65 KB | TRL audits |
-| `services.ports.json`     | `[{id, host_port, container_port}]`                     | ~26 KB | port allocation / conflict checks |
-| `services.deploy.json`    | `[{id, mesh, kind, runtime, language, repo_url}]`       | ~87 KB | fleet-runner deploy targeting |
-| `services.depends.json`   | `[{id, depends_on}]`                                     | ~13 KB | declared dependency edges |
-| `services.mcp.json`       | `[{id, name, url, mcp_ready, mcp_tool_count, …}]`        | ~40 KB | MCP-ready services |
+| URL suffix              | shape                                                    | size    | use when                                |
+| ----------------------- | -------------------------------------------------------- | ------- | --------------------------------------- |
+| `services.ids.json`     | `[{"id": "a11y-quick"}, …]`                              | ~14 KB  | "what services exist?" (sunset omitted) |
+| `services.names.json`   | `[{id, name}]`                                           | ~29 KB  | pickers / menus                         |
+| `services.minimal.json` | `[{id, name, mesh, kind, category, language, trl, url}]` | ~97 KB  | catalog overview                        |
+| `services.urls.json`    | `[{id, url, health_url, example_path, auth_help}]`       | ~119 KB | building Open / smoke links             |
+| `services.trl.json`     | `[{id, trl, trl_ceiling, trl_assessed_at, …}]`           | ~65 KB  | TRL audits                              |
+| `services.ports.json`   | `[{id, host_port, container_port}]`                      | ~26 KB  | port allocation / conflict checks       |
+| `services.deploy.json`  | `[{id, mesh, kind, runtime, language, repo_url}]`        | ~87 KB  | fleet-runner deploy targeting           |
+| `services.depends.json` | `[{id, depends_on}]`                                     | ~13 KB  | declared dependency edges               |
+| `services.mcp.json`     | `[{id, name, url, mcp_ready, mcp_tool_count, …}]`        | ~40 KB  | MCP-ready services                      |
 
 Base URL: `https://raw.githubusercontent.com/baditaflorin/services-registry/main/<file>`.
 
@@ -204,12 +204,12 @@ mesh.
 
 ### Axis 1 — `kind` (what shape of deployable)
 
-| `kind`      | What it is                                  | Has port? | `/health`? | Workspace on LXC? | Bumpable version? | Counted in `fleet-runner health` / `smoke` / `deploy`? |
-|-------------|---------------------------------------------|-----------|------------|-------------------|--------------------|--------------------------------------------------------|
-| `container` | Container service (compose or Coolify)      | yes       | yes        | yes               | yes                | yes                                                    |
-| `static`    | Static GitHub Pages site                    | no        | no         | yes (container operations skip it) | no (exception: `pentest-dashboard`) | **no** — has its own `fleet-runner pages-audit`        |
+| `kind`      | What it is                             | Has port? | `/health`? | Workspace on LXC?                  | Bumpable version?                   | Counted in `fleet-runner health` / `smoke` / `deploy`? |
+| ----------- | -------------------------------------- | --------- | ---------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------ |
+| `container` | Container service (compose or Coolify) | yes       | yes        | yes                                | yes                                 | yes                                                    |
+| `static`    | Static GitHub Pages site               | no        | no         | yes (container operations skip it) | no (exception: `pentest-dashboard`) | **no** — has its own `fleet-runner pages-audit`        |
 
-<!-- anchor id=kind-static-pages-audit repo=go_fleet_runner symbol=verb:pages-audit verified=6bebc4351 digest=sha256:1f393614de6c9d4c4f37d3cf00e216c5b25d9941a7b46a8b87e5977a595f8ab0 on=2026-10-12 -->
+<!-- anchor id=kind-static-pages-audit repo=go_fleet_runner symbol=verb:pages-audit verified=c6f1ea927 digest=sha256:1f393614de6c9d4c4f37d3cf00e216c5b25d9941a7b46a8b87e5977a595f8ab0 on=2026-10-15 -->
 
 If this repo's `service.yaml` (or registry entry) says `kind: static`,
 **trust `kind`, not the file layout**: such a repo normally has no
@@ -219,12 +219,12 @@ to deploy and no `/health` to probe.
 
 ### Axis 2 — `mesh` (which network + auth domain)
 
-| `mesh` | Domain pattern | Auth | Typical contents |
-|---|---|---|---|
-| `0exec` | `<slug>.0exec.com` | Keystore-verified request headers (`api_key`); entries with `auth.type: none` are public | infrastructure, security, fleet tooling, proxy, observability |
-| `0crawl` | `<slug>.0crawl.com` | Keystore-verified request headers | domains, recon, web analysis |
-| `pages` | `*.github.io` / custom | none (static) | peer-to-peer and browser-only apps, productivity tools, games |
-| `custom` | own domain | none | services outside the fleet apex domains |
+| `mesh`   | Domain pattern         | Auth                                                                                     | Typical contents                                              |
+| -------- | ---------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `0exec`  | `<slug>.0exec.com`     | Keystore-verified request headers (`api_key`); entries with `auth.type: none` are public | infrastructure, security, fleet tooling, proxy, observability |
+| `0crawl` | `<slug>.0crawl.com`    | Keystore-verified request headers                                                        | domains, recon, web analysis                                  |
+| `pages`  | `*.github.io` / custom | none (static)                                                                            | peer-to-peer and browser-only apps, productivity tools, games |
+| `custom` | own domain             | none                                                                                     | services outside the fleet apex domains                       |
 
 The registry stores the bare values above; the `mesh-<name>` spelling is only
 for GitHub topics and `service.yaml`.
@@ -235,30 +235,30 @@ keys in a URL path or query string.
 
 ### Axis 3 — `runtime` (how it's started)
 
-| `runtime`     | What it means                                             |
-|---------------|-----------------------------------------------------------|
-| `compose`     | Default for `kind: container`. Docker-compose on the dockerhost; deploy = `docker compose pull && up -d` |
-| `coolify`     | Deployed through the Coolify API; `fleet-runner deploy` dispatches to it instead of SSH + compose |
-| `systemd`     | Reserved — a service unit on a host; deploy = `systemctl restart` |
-| `binary`      | Reserved — a static binary run by hand or by a launcher    |
-| `k8s`         | Reserved — managed by a kube manifest                      |
-| `github-pages`| Default for `kind: static`. Built and served by GitHub Pages CI |
-| `external`    | Runs outside the fleet; registered via `$external` so its port is claimed. `clone-missing` and gateway vhost rendering skip it |
+| `runtime`      | What it means                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `compose`      | Default for `kind: container`. Docker-compose on the dockerhost; deploy = `docker compose pull && up -d`                       |
+| `coolify`      | Deployed through the Coolify API; `fleet-runner deploy` dispatches to it instead of SSH + compose                              |
+| `systemd`      | Reserved — a service unit on a host; deploy = `systemctl restart`                                                              |
+| `binary`       | Reserved — a static binary run by hand or by a launcher                                                                        |
+| `k8s`          | Reserved — managed by a kube manifest                                                                                          |
+| `github-pages` | Default for `kind: static`. Built and served by GitHub Pages CI                                                                |
+| `external`     | Runs outside the fleet; registered via `$external` so its port is claimed. `clone-missing` and gateway vhost rendering skip it |
 
 `runtime` is orthogonal to `language`. A Go service might be `runtime: compose` today and `runtime: systemd` tomorrow without re-classifying it as a different language or kind. `fleet-runner deploy` dispatches on `runtime`.
 
 ### Axis 4 — `language` (primary implementation)
 
-| `language` | When to use it                                                 |
-|------------|----------------------------------------------------------------|
-| `go`       | Default for `kind: container` in this fleet                    |
+| `language` | When to use it                                                          |
+| ---------- | ----------------------------------------------------------------------- |
+| `go`       | Default for `kind: container` in this fleet                             |
 | `node`     | Node.js services (proxies, SERP scrapers, a few geo/OCR/NLP extractors) |
-| `python`   | Python services (see `services.summary.txt` for the count)     |
-| `c`        | C services (currently 1: `c-proxy`)                            |
-| `rust`     | Reserved for future use                                        |
-| `html`     | Default for `kind: static` — plain HTML/CSS/JS Pages sites     |
-| `wasm`     | Static Pages site whose primary payload is a WASM binary       |
-| `other`    | Anything that doesn't fit                                      |
+| `python`   | Python services (see `services.summary.txt` for the count)              |
+| `c`        | C services (currently 1: `c-proxy`)                                     |
+| `rust`     | Reserved for future use                                                 |
+| `html`     | Default for `kind: static` — plain HTML/CSS/JS Pages sites              |
+| `wasm`     | Static Pages site whose primary payload is a WASM binary                |
+| `other`    | Anything that doesn't fit                                               |
 
 Bulk verbs that take `--filter K=V[,K=V]` (for example
 `fleet-runner update-dep --filter kind=container,language=go <module@version>`)
@@ -273,34 +273,34 @@ In a service repo, look at its `service.yaml` (or its registry entry in
 
 Every `services.json` entry may carry a `trl` field 1–9:
 
-| TRL | Band         | Meaning                                                              |
-|-----|--------------|----------------------------------------------------------------------|
-| 1–3 | toy          | single regex / no tests. Don't depend on it.                         |
-| 4–5 | developing   | curated lists, multi-step logic, partial tests.                      |
-| 6–7 | real         | RFC-compliant parsing, evidence trails, real test coverage.          |
-| 8–9 | production   | battle-tested, cross-checks, SLA-grade.                              |
+| TRL | Band       | Meaning                                                     |
+| --- | ---------- | ----------------------------------------------------------- |
+| 1–3 | toy        | single regex / no tests. Don't depend on it.                |
+| 4–5 | developing | curated lists, multi-step logic, partial tests.             |
+| 6–7 | real       | RFC-compliant parsing, evidence trails, real test coverage. |
+| 8–9 | production | battle-tested, cross-checks, SLA-grade.                     |
 
 `trl_ceiling` marks services that **structurally cannot** advance
 further (e.g. needs a browser engine, needs paid threat intel).
 `trl_assessed_at` older than ~90 days is stale — re-audit.
 
-<!-- anchor id=trl-cmdtrlreview repo=go_fleet_runner symbol=go:cmd_trl_review.go#cmdTRLReview verified=6bebc4351 digest=sha256:0e431989c33d02dd54e9a945f588319737fe7347bf55e93f8d553ac4e2fee26b on=2026-10-12 -->
+<!-- anchor id=trl-cmdtrlreview repo=go_fleet_runner symbol=go:cmd_trl_review.go#cmdTRLReview verified=c6f1ea927 digest=sha256:0e431989c33d02dd54e9a945f588319737fe7347bf55e93f8d553ac4e2fee26b on=2026-10-15 -->
 
 ## Key sibling repos
 
-| Repo                  | Role                                                                                | Visibility |
-|-----------------------|-------------------------------------------------------------------------------------|------------|
-| `services-registry`   | canonical catalog (services.json + FLEET.md + this file)                            | PUBLIC     |
-| `go-common`           | shared Go lib — SSRF-safe HTTP, jsbundle recovery, **apikey client**, ua, middleware | PUBLIC |
-| `mesh-common`         | shared TS/React runtime for the `mesh-*` P2P fleet (see "mesh-* P2P fleet" below)   | PUBLIC     |
-| `go-fleet-persona`    | cross-app + cross-origin display-identity service (`persona.0exec.com`)             | PRIVATE    |
-| `go_apikey_service`   | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`                | PRIVATE    |
-| `go-catalog-service`  | renders services.json into `catalog.0exec.com`                                      | PRIVATE    |
-| `go_fleet_runner`     | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)                   | PRIVATE    |
-| `0crawl-platform`     | bootstrap/reference IaC (certbot DNS-01 hooks, batch vhost-drift scripts, reference nginx templates; bootstrap/ and compose/ are README-only); its nginx templates are a diverged reference copy, the deployed templates are embedded in fleet-runner | PRIVATE |
-| `fleet-state`         | live operational state, runbooks, SSH topology                                      | PRIVATE    |
+| Repo                 | Role                                                                                                                                                                                                                                                  | Visibility |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `services-registry`  | canonical catalog (services.json + FLEET.md + this file)                                                                                                                                                                                              | PUBLIC     |
+| `go-common`          | shared Go lib — SSRF-safe HTTP, jsbundle recovery, **apikey client**, ua, middleware                                                                                                                                                                  | PUBLIC     |
+| `mesh-common`        | shared TS/React runtime for the `mesh-*` P2P fleet (see "mesh-\* P2P fleet" below)                                                                                                                                                                    | PUBLIC     |
+| `go-fleet-persona`   | cross-app + cross-origin display-identity service (`persona.0exec.com`)                                                                                                                                                                               | PRIVATE    |
+| `go_apikey_service`  | **the keystore** — issues/verifies/revokes API keys for `mesh-0exec`                                                                                                                                                                                  | PRIVATE    |
+| `go-catalog-service` | renders services.json into `catalog.0exec.com`                                                                                                                                                                                                        | PRIVATE    |
+| `go_fleet_runner`    | CLI to operate the fleet (`health`, `smoke`, `inject`, `push`, …)                                                                                                                                                                                     | PRIVATE    |
+| `0crawl-platform`    | bootstrap/reference IaC (certbot DNS-01 hooks, batch vhost-drift scripts, reference nginx templates; bootstrap/ and compose/ are README-only); its nginx templates are a diverged reference copy, the deployed templates are embedded in fleet-runner | PRIVATE    |
+| `fleet-state`        | live operational state, runbooks, SSH topology                                                                                                                                                                                                        | PRIVATE    |
 
-## mesh-* P2P fleet — separate from the container fleet
+## mesh-\* P2P fleet — separate from the container fleet
 
 The `mesh-*` repos under `baditaflorin/*` are a **distinct fleet** from the
 0exec/0crawl container services described above. They are browser-only,
@@ -320,34 +320,34 @@ re-bundle on the next `npm run build`.
 
 Headline primitives (see mesh-common `CHANGELOG.md` for the current version and exports):
 
-| Module                        | What it does                                                                 |
-|-------------------------------|------------------------------------------------------------------------------|
-| `MeshShell`                   | App chrome: settings drawer + beacon; app bar with Invite/Settings buttons when `config.shellLayout` is set, else legacy text "Invite" button, ⚙ settings FAB and self-ref bar |
-| `SettingsDrawer`              | Room id + signaling/TURN overrides; injection slot for per-app extras        |
-| `createMeshConfig`            | One-call config factory (app name, accent, version, signaling/TURN defaults) |
-| `useYRoom`                    | `{doc, provider, peerId, peerCount}` for a Yjs room over WebRTC              |
-| `clockSync`                   | NTP-over-Yjs offset → mesh-median time (~10–30 ms stable)                    |
-| `commitReveal`                | SHA-256 commit/reveal for anonymous votes, fair RNG, role assignment         |
-| `identity` + `tofuRegistry`   | Ed25519 keypair + TOFU pinned-pubkey registry (per-room crypto identity)     |
-| `moderator` + `ModeratorBadge`| Signed first-claim-wins role with 30-min auto-expire                         |
-| `PersonalQR` / `QRExchange`   | Inline-SVG QR (real-URL payload) + camera scanner                            |
-| `useAwareness`                | Typed wrapper around `y-protocols/awareness` (presence / cursors / typing)   |
-| `PeerAvatar`                  | Deterministic SVG avatar from peerId / pubkey — zero network, zero PII       |
-| `useTypedMap` / `useTypedArray` | Zod-validated `Y.Map` / `Y.Array` — hostile peers' writes filtered at the edge |
-| `useRoomSeal` / `deriveRoomKey` | Room-wide AES-GCM seal via PBKDF2(passphrase, roomId) — opt-in E2E         |
-| `MeshErrorBoundary`           | Drop-in crash containment for the `<Feature>` subtree                        |
-| `useMeshLink`                 | Typed encoder/parser for the `#r=…&p=…&x=…` deep-link fragment               |
-| `useMultiRoom`                | Run several Yjs rooms in one tab (facilitator dashboards, embeds, side-by-side) |
-| `usePresenceCursors`          | Figma-style live cursors built on `useAwareness`                             |
-| `useThreadedMessages`         | `Y.Map<msgId, {parent, body, by, at, sig}>` with `post()` / `reply()`        |
-| `useReadReceipts`             | Per-peer monotone "last seen at message N"                                   |
-| `useOfflineQueue`             | Buffer writes when isolated; replay through `flush()` on reconnect           |
-| `useFileShare`                | Chunked file share through the Yjs transport                                 |
-| `SafeMarkdown`                | `marked` Markdown; output filtered to a tag/attr allow-list (raw HTML is filtered, not rejected; link schemes are deny-listed) |
-| `useFakeTime`                 | Test-only clock fixture; production collapses to `Date.now()`                |
-| **`useFleetPersona`**         | **Cross-app + cross-origin display identity (nickname + name + avatar)**     |
-| **`FleetAvatar`**             | **Drop-in avatar for the current fleet persona; reuses `PeerAvatar`**        |
-| **`FleetIdentityPanel`**      | **Drop-in settings UI; auto-mounted inside `MeshShell` by default in 0.10.1+**|
+| Module                          | What it does                                                                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MeshShell`                     | App chrome: settings drawer + beacon; app bar with Invite/Settings buttons when `config.shellLayout` is set, else legacy text "Invite" button, ⚙ settings FAB and self-ref bar |
+| `SettingsDrawer`                | Room id + signaling/TURN overrides; injection slot for per-app extras                                                                                                          |
+| `createMeshConfig`              | One-call config factory (app name, accent, version, signaling/TURN defaults)                                                                                                   |
+| `useYRoom`                      | `{doc, provider, peerId, peerCount}` for a Yjs room over WebRTC                                                                                                                |
+| `clockSync`                     | NTP-over-Yjs offset → mesh-median time (~10–30 ms stable)                                                                                                                      |
+| `commitReveal`                  | SHA-256 commit/reveal for anonymous votes, fair RNG, role assignment                                                                                                           |
+| `identity` + `tofuRegistry`     | Ed25519 keypair + TOFU pinned-pubkey registry (per-room crypto identity)                                                                                                       |
+| `moderator` + `ModeratorBadge`  | Signed first-claim-wins role with 30-min auto-expire                                                                                                                           |
+| `PersonalQR` / `QRExchange`     | Inline-SVG QR (real-URL payload) + camera scanner                                                                                                                              |
+| `useAwareness`                  | Typed wrapper around `y-protocols/awareness` (presence / cursors / typing)                                                                                                     |
+| `PeerAvatar`                    | Deterministic SVG avatar from peerId / pubkey — zero network, zero PII                                                                                                         |
+| `useTypedMap` / `useTypedArray` | Zod-validated `Y.Map` / `Y.Array` — hostile peers' writes filtered at the edge                                                                                                 |
+| `useRoomSeal` / `deriveRoomKey` | Room-wide AES-GCM seal via PBKDF2(passphrase, roomId) — opt-in E2E                                                                                                             |
+| `MeshErrorBoundary`             | Drop-in crash containment for the `<Feature>` subtree                                                                                                                          |
+| `useMeshLink`                   | Typed encoder/parser for the `#r=…&p=…&x=…` deep-link fragment                                                                                                                 |
+| `useMultiRoom`                  | Run several Yjs rooms in one tab (facilitator dashboards, embeds, side-by-side)                                                                                                |
+| `usePresenceCursors`            | Figma-style live cursors built on `useAwareness`                                                                                                                               |
+| `useThreadedMessages`           | `Y.Map<msgId, {parent, body, by, at, sig}>` with `post()` / `reply()`                                                                                                          |
+| `useReadReceipts`               | Per-peer monotone "last seen at message N"                                                                                                                                     |
+| `useOfflineQueue`               | Buffer writes when isolated; replay through `flush()` on reconnect                                                                                                             |
+| `useFileShare`                  | Chunked file share through the Yjs transport                                                                                                                                   |
+| `SafeMarkdown`                  | `marked` Markdown; output filtered to a tag/attr allow-list (raw HTML is filtered, not rejected; link schemes are deny-listed)                                                 |
+| `useFakeTime`                   | Test-only clock fixture; production collapses to `Date.now()`                                                                                                                  |
+| **`useFleetPersona`**           | **Cross-app + cross-origin display identity (nickname + name + avatar)**                                                                                                       |
+| **`FleetAvatar`**               | **Drop-in avatar for the current fleet persona; reuses `PeerAvatar`**                                                                                                          |
+| **`FleetIdentityPanel`**        | **Drop-in settings UI; auto-mounted inside `MeshShell` by default in 0.10.1+**                                                                                                 |
 
 ### Fleet identity (`fleetPersona`) — three-tier resolver
 
@@ -355,11 +355,11 @@ Headline primitives (see mesh-common `CHANGELOG.md` for the current version and 
 (`nickname + name + avatarSeed + avatarVariant + paletteIndex`) through
 three tiers, falling back gracefully if any is unavailable:
 
-| Tier | Where                       | Notes                                                                         |
-|------|-----------------------------|-------------------------------------------------------------------------------|
-| L0   | per-app `localStorage`      | Always wins once the user types something                                     |
+| Tier | Where                       | Notes                                                                                      |
+| ---- | --------------------------- | ------------------------------------------------------------------------------------------ |
+| L0   | per-app `localStorage`      | Always wins once the user types something                                                  |
 | L1   | same-origin `localStorage`  | **Free** on GH Pages — every `mesh-*` app under `baditaflorin.github.io` shares one origin |
-| L2   | `https://persona.0exec.com` | Optional cross-origin sync; 2 s fetch timeout; fire-and-forget; service-down → silent |
+| L2   | `https://persona.0exec.com` | Optional cross-origin sync; 2 s fetch timeout; fire-and-forget; service-down → silent      |
 
 The L2 fetch never blocks the UI; if the service is down or slow, L0/L1
 keep the user's identity intact. Writes from app code propagate down the
@@ -390,15 +390,15 @@ apps that want a staging endpoint pass their own URL.
 Public URL: **`https://persona.0exec.com`** (canonical) and
 `https://fleet-persona.0exec.com` (alias).
 
-| Aspect            | Value                                                                          |
-|-------------------|--------------------------------------------------------------------------------|
-| Registry id       | `fleet-persona`                                                                |
-| Mesh / kind / runtime | `0exec` / `container` / `compose`                                          |
-| Port              | `18209` (host) → `18209` (container)                                           |
-| Image             | `ghcr.io/baditaflorin/fleet-persona` (cosign-signed; tag pinned by `fleet-runner deploy`; the 2026-10-10 state snapshot records the running container on `:latest`) |
-| Auth              | `none` — **public read by design**; writes argon2id-gated by client-held writeToken |
-| Storage           | pure-Go SQLite (`modernc.org/sqlite`) on a single docker volume                |
-| Tests             | `go test ./...` (unit + handler); `testing/smoke.sh` runs the full lifecycle end-to-end |
+| Aspect                | Value                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Registry id           | `fleet-persona`                                                                                                                                                     |
+| Mesh / kind / runtime | `0exec` / `container` / `compose`                                                                                                                                   |
+| Port                  | `18209` (host) → `18209` (container)                                                                                                                                |
+| Image                 | `ghcr.io/baditaflorin/fleet-persona` (cosign-signed; tag pinned by `fleet-runner deploy`; the 2026-10-10 state snapshot records the running container on `:latest`) |
+| Auth                  | `none` — **public read by design**; writes argon2id-gated by client-held writeToken                                                                                 |
+| Storage               | pure-Go SQLite (`modernc.org/sqlite`) on a single docker volume                                                                                                     |
+| Tests                 | `go test ./...` (unit + handler); `testing/smoke.sh` runs the full lifecycle end-to-end                                                                             |
 
 Wire surface (responses from `/v1/*` and `/selftest` use the go-common envelope `{ status, data }`):
 
@@ -433,8 +433,8 @@ Rate limits: 60 reads/min/IP and 30 writes/hour/(IP, anonId) by default;
 - Pre-commit hook (`.githooks/pre-commit`) runs `npm run fmt:check` and
   `npm run typecheck`; the pre-push hook adds `npm run smoke`
   (`bash scripts/smoke.sh`: vitest unit tests when present + `npm run build`
-  + sanity-check of `docs/index.html`, `docs/404.html` and `docs/assets`).
-  **Never `--no-verify`**; if a hook fails, run `npm run fmt` and re-commit.
+  - sanity-check of `docs/index.html`, `docs/404.html` and `docs/assets`).
+    **Never `--no-verify`**; if a hook fails, run `npm run fmt` and re-commit.
 - `useFleetPersona` is the canonical way to read/write the user's display
   name — never roll your own `myName` localStorage key for new apps.
   Existing apps can migrate at their own pace; the panel is opt-in for
@@ -509,69 +509,69 @@ existing services flip over organically as they get touched.
 
 ## `go-common` packages — use these, don't reinvent
 
-| Package      | Import path                                       | Purpose                                                 |
-|--------------|---------------------------------------------------|---------------------------------------------------------|
-| safehttp     | `github.com/baditaflorin/go-common/safehttp`      | SSRF-safe HTTP client, DNS-rebind guard                 |
-| ua           | `github.com/baditaflorin/go-common/ua`            | Standard User-Agent builder                             |
-| jsbundle     | `github.com/baditaflorin/go-common/jsbundle`      | source-map recovery for scanning JS bundles             |
-| apikey       | `github.com/baditaflorin/go-common/apikey`        | keystore client (`Verify`, `Cache`, admin endpoints)    |
-| middleware   | `github.com/baditaflorin/go-common/middleware`    | `TokenAuthKeystore` HTTP middleware (≥ v0.7.0)          |
-| loadshed     | `github.com/baditaflorin/go-common/loadshed`      | non-blocking concurrency gate: cap calls to a slow upstream, fast-503 the excess (`loadshed_shed_total`) (≥ v0.65.0) |
-| agent        | `github.com/baditaflorin/go-common/agent`         | machine-readable "agent contract" a service advertises so AI agents can call it correctly |
-| backoffcoord | `github.com/baditaflorin/go-common/backoffcoord`  | distributed backoff coordinator client; consult before retrying a failed upstream |
-| bootgate     | `github.com/baditaflorin/go-common/bootgate`      | opt-in boot-time gate: spreads a first heavy cycle out in time and backs off while the host is overloaded |
-| browserheaders | `github.com/baditaflorin/go-common/browserheaders` | coherent browser-typical HTTP headers for outbound calls that must pass trivial bot detection |
-| cache        | `github.com/baditaflorin/go-common/cache`         | generic, concurrency-safe LRU+TTL cache                 |
-| cgroup       | `github.com/baditaflorin/go-common/cgroup`        | resource counters and limits for the current Linux cgroup |
-| circuitbreaker | `github.com/baditaflorin/go-common/circuitbreaker` | in-process circuit breaker per (service, upstream): closed → open → half-open, with `Allow`/`Success`/`Failure` and an observer hook |
-| client       | `github.com/baditaflorin/go-common/client`        | low-level HTTP client abstractions (capability negotiation, URL proxying helpers); prefer `safehttp.NewClient` |
-| clock        | `github.com/baditaflorin/go-common/clock`         | `Clock` interface with real and controllable mock implementations |
-| config       | `github.com/baditaflorin/go-common/config`        | loads service configuration from `service.yaml` and environment variables |
-| credentiallease | `github.com/baditaflorin/go-common/credentiallease` | task-bound client for a credential broker               |
-| credentiallease/broker | `github.com/baditaflorin/go-common/credentiallease/broker` | fail-closed HTTP core for credentiallease v1 broker deployments |
-| dataformat   | `github.com/baditaflorin/go-common/dataformat`    | conversion between JSON, CSV, XML, YAML and TOML        |
-| dbx          | `github.com/baditaflorin/go-common/dbx`           | context-aware database entry point: instrumented pgx `database/sql`, native `pgxpool` |
-| degraded     | `github.com/baditaflorin/go-common/degraded`      | accumulates degradation reasons for the request into the response envelope `degraded` array |
-| depcheck     | `github.com/baditaflorin/go-common/depcheck`      | registry of named health probes included in the `/health` JSON |
-| deploymentauthorization | `github.com/baditaflorin/go-common/deploymentauthorization` | signed deployment-decision contract shared by the authority and fleet runner |
-| deploymentintent | `github.com/baditaflorin/go-common/deploymentintent` | versioned deployment intent exchanged by deployment control-plane components |
-| deploymentlease | `github.com/baditaflorin/go-common/deploymentlease` | fail-closed client for the Fleet Deployment Authority mTLS authorization and target-lease API |
-| env          | `github.com/baditaflorin/go-common/env`           | typed helpers for reading environment variables with defaults or required-or-fatal semantics |
-| errors       | `github.com/baditaflorin/go-common/errors`        | typed `Error` with HTTP status, stable error code, message and cause |
-| fleetfetch   | `github.com/baditaflorin/go-common/fleetfetch`    | caller-side client for the fleet-wide HTTP fetch cache  |
-| graph        | `github.com/baditaflorin/go-common/graph`         | instruments service-to-service calls and emits them to go-fleet-graph |
-| header       | `github.com/baditaflorin/go-common/header`        | canonical HTTP header name constants                    |
-| ledger       | `github.com/baditaflorin/go-common/ledger`        | client for the fleet token ledger: charge the caller's own balance before expensive work |
-| meshresult   | `github.com/baditaflorin/go-common/meshresult`    | canonical classification of an enricher result plus its HTTP-status mapping |
-| metrics      | `github.com/baditaflorin/go-common/metrics`       | in-process request statistics collector served at `/metrics/json` |
-| nullify      | `github.com/baditaflorin/go-common/nullify`       | `StringOrNil`: store NULL instead of placeholder strings such as "unknown" in verdict columns |
-| obs          | `github.com/baditaflorin/go-common/obs`           | localhost-only pprof + `/metrics` debug server and Go runtime/process Prometheus collectors |
-| openapi      | `github.com/baditaflorin/go-common/openapi`       | types and helpers for building the OpenAPI 3.0.3 document served at `/openapi.json` |
-| pagination   | `github.com/baditaflorin/go-common/pagination`    | canonical cursor-based and offset-based paginated response types |
-| pentest      | `github.com/baditaflorin/go-common/pentest`       | security-testing helpers: bounded-concurrency worker pool and result aggregator |
-| profiling    | `github.com/baditaflorin/go-common/profiling`     | opt-in continuous profiling through Grafana Pyroscope   |
-| promx        | `github.com/baditaflorin/go-common/promx`         | fleet-wide Prometheus collectors and the single-call `AutoWire` |
-| proxysupplier | `github.com/baditaflorin/go-common/proxysupplier` | resolves the upstream egress-proxy URL for outbound HTTP (`PROXY_SUPPLIER`) |
-| qrterm       | `github.com/baditaflorin/go-common/qrterm`        | turns a URL, id or token into a terminal QR code or a PNG |
-| ratecoord    | `github.com/baditaflorin/go-common/ratecoord`     | distributed rate-limit coordination client              |
-| reqstats     | `github.com/baditaflorin/go-common/reqstats`      | per-request resource stats in `Server-Timing` and `X-Request-Stats` headers |
-| response     | `github.com/baditaflorin/go-common/response`      | canonical fleet JSON response envelope                  |
-| retry        | `github.com/baditaflorin/go-common/retry`         | context-aware retry with configurable backoff (exponential, full jitter) |
-| runtimetune  | `github.com/baditaflorin/go-common/runtimetune`   | container-aware Go runtime memory/GC tuning at process start |
-| secrets      | `github.com/baditaflorin/go-common/secrets`       | client for the go-fleet-secrets vault (`GET /secrets/<name>`) |
-| server       | `github.com/baditaflorin/go-common/server`        | canonical fleet HTTP server bootstrap                   |
-| shutdown     | `github.com/baditaflorin/go-common/shutdown`      | single-call graceful shutdown for `net/http` servers    |
-| spiffe       | `github.com/baditaflorin/go-common/spiffe`        | adapts the SPIFFE Workload API to credentiallease identities |
-| telemetry    | `github.com/baditaflorin/go-common/telemetry`     | W3C trace propagation, HTTP spans and OTLP/HTTP export  |
-| testhelpers/fakeexec | `github.com/baditaflorin/go-common/testhelpers/fakeexec` | in-memory fake for the command-runner seam used to shell out to git / go / docker |
-| testhelpers/fakegraph | `github.com/baditaflorin/go-common/testhelpers/fakegraph` | captures `graph.Event` values in tests                  |
-| testhelpers/fakekey | `github.com/baditaflorin/go-common/testhelpers/fakekey` | in-memory `apikey.Verifier` for tests                   |
-| testhelpers/httpmock | `github.com/baditaflorin/go-common/testhelpers/httpmock` | canonical `httptest.Server` factories for common upstream patterns |
-| testhelpers/testclock | `github.com/baditaflorin/go-common/testhelpers/testclock` | thin re-export of `clock.NewMock` and `clock.Mock` for tests |
-| validate     | `github.com/baditaflorin/go-common/validate`      | struct-tag-driven JSON request decoding and validation  |
-| version      | `github.com/baditaflorin/go-common/version`       | build identity variables injected via `-ldflags`        |
-| wordbound    | `github.com/baditaflorin/go-common/wordbound`     | Unicode-aware word-boundary helpers (Go regexp `\b` is ASCII-only) |
-| workpool     | `github.com/baditaflorin/go-common/workpool`      | bounded-concurrency worker pool                         |
+| Package                 | Import path                                                 | Purpose                                                                                                                              |
+| ----------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| safehttp                | `github.com/baditaflorin/go-common/safehttp`                | SSRF-safe HTTP client, DNS-rebind guard                                                                                              |
+| ua                      | `github.com/baditaflorin/go-common/ua`                      | Standard User-Agent builder                                                                                                          |
+| jsbundle                | `github.com/baditaflorin/go-common/jsbundle`                | source-map recovery for scanning JS bundles                                                                                          |
+| apikey                  | `github.com/baditaflorin/go-common/apikey`                  | keystore client (`Verify`, `Cache`, admin endpoints)                                                                                 |
+| middleware              | `github.com/baditaflorin/go-common/middleware`              | `TokenAuthKeystore` HTTP middleware (≥ v0.7.0)                                                                                       |
+| loadshed                | `github.com/baditaflorin/go-common/loadshed`                | non-blocking concurrency gate: cap calls to a slow upstream, fast-503 the excess (`loadshed_shed_total`) (≥ v0.65.0)                 |
+| agent                   | `github.com/baditaflorin/go-common/agent`                   | machine-readable "agent contract" a service advertises so AI agents can call it correctly                                            |
+| backoffcoord            | `github.com/baditaflorin/go-common/backoffcoord`            | distributed backoff coordinator client; consult before retrying a failed upstream                                                    |
+| bootgate                | `github.com/baditaflorin/go-common/bootgate`                | opt-in boot-time gate: spreads a first heavy cycle out in time and backs off while the host is overloaded                            |
+| browserheaders          | `github.com/baditaflorin/go-common/browserheaders`          | coherent browser-typical HTTP headers for outbound calls that must pass trivial bot detection                                        |
+| cache                   | `github.com/baditaflorin/go-common/cache`                   | generic, concurrency-safe LRU+TTL cache                                                                                              |
+| cgroup                  | `github.com/baditaflorin/go-common/cgroup`                  | resource counters and limits for the current Linux cgroup                                                                            |
+| circuitbreaker          | `github.com/baditaflorin/go-common/circuitbreaker`          | in-process circuit breaker per (service, upstream): closed → open → half-open, with `Allow`/`Success`/`Failure` and an observer hook |
+| client                  | `github.com/baditaflorin/go-common/client`                  | low-level HTTP client abstractions (capability negotiation, URL proxying helpers); prefer `safehttp.NewClient`                       |
+| clock                   | `github.com/baditaflorin/go-common/clock`                   | `Clock` interface with real and controllable mock implementations                                                                    |
+| config                  | `github.com/baditaflorin/go-common/config`                  | loads service configuration from `service.yaml` and environment variables                                                            |
+| credentiallease         | `github.com/baditaflorin/go-common/credentiallease`         | task-bound client for a credential broker                                                                                            |
+| credentiallease/broker  | `github.com/baditaflorin/go-common/credentiallease/broker`  | fail-closed HTTP core for credentiallease v1 broker deployments                                                                      |
+| dataformat              | `github.com/baditaflorin/go-common/dataformat`              | conversion between JSON, CSV, XML, YAML and TOML                                                                                     |
+| dbx                     | `github.com/baditaflorin/go-common/dbx`                     | context-aware database entry point: instrumented pgx `database/sql`, native `pgxpool`                                                |
+| degraded                | `github.com/baditaflorin/go-common/degraded`                | accumulates degradation reasons for the request into the response envelope `degraded` array                                          |
+| depcheck                | `github.com/baditaflorin/go-common/depcheck`                | registry of named health probes included in the `/health` JSON                                                                       |
+| deploymentauthorization | `github.com/baditaflorin/go-common/deploymentauthorization` | signed deployment-decision contract shared by the authority and fleet runner                                                         |
+| deploymentintent        | `github.com/baditaflorin/go-common/deploymentintent`        | versioned deployment intent exchanged by deployment control-plane components                                                         |
+| deploymentlease         | `github.com/baditaflorin/go-common/deploymentlease`         | fail-closed client for the Fleet Deployment Authority mTLS authorization and target-lease API                                        |
+| env                     | `github.com/baditaflorin/go-common/env`                     | typed helpers for reading environment variables with defaults or required-or-fatal semantics                                         |
+| errors                  | `github.com/baditaflorin/go-common/errors`                  | typed `Error` with HTTP status, stable error code, message and cause                                                                 |
+| fleetfetch              | `github.com/baditaflorin/go-common/fleetfetch`              | caller-side client for the fleet-wide HTTP fetch cache                                                                               |
+| graph                   | `github.com/baditaflorin/go-common/graph`                   | instruments service-to-service calls and emits them to go-fleet-graph                                                                |
+| header                  | `github.com/baditaflorin/go-common/header`                  | canonical HTTP header name constants                                                                                                 |
+| ledger                  | `github.com/baditaflorin/go-common/ledger`                  | client for the fleet token ledger: charge the caller's own balance before expensive work                                             |
+| meshresult              | `github.com/baditaflorin/go-common/meshresult`              | canonical classification of an enricher result plus its HTTP-status mapping                                                          |
+| metrics                 | `github.com/baditaflorin/go-common/metrics`                 | in-process request statistics collector served at `/metrics/json`                                                                    |
+| nullify                 | `github.com/baditaflorin/go-common/nullify`                 | `StringOrNil`: store NULL instead of placeholder strings such as "unknown" in verdict columns                                        |
+| obs                     | `github.com/baditaflorin/go-common/obs`                     | localhost-only pprof + `/metrics` debug server and Go runtime/process Prometheus collectors                                          |
+| openapi                 | `github.com/baditaflorin/go-common/openapi`                 | types and helpers for building the OpenAPI 3.0.3 document served at `/openapi.json`                                                  |
+| pagination              | `github.com/baditaflorin/go-common/pagination`              | canonical cursor-based and offset-based paginated response types                                                                     |
+| pentest                 | `github.com/baditaflorin/go-common/pentest`                 | security-testing helpers: bounded-concurrency worker pool and result aggregator                                                      |
+| profiling               | `github.com/baditaflorin/go-common/profiling`               | opt-in continuous profiling through Grafana Pyroscope                                                                                |
+| promx                   | `github.com/baditaflorin/go-common/promx`                   | fleet-wide Prometheus collectors and the single-call `AutoWire`                                                                      |
+| proxysupplier           | `github.com/baditaflorin/go-common/proxysupplier`           | resolves the upstream egress-proxy URL for outbound HTTP (`PROXY_SUPPLIER`)                                                          |
+| qrterm                  | `github.com/baditaflorin/go-common/qrterm`                  | turns a URL, id or token into a terminal QR code or a PNG                                                                            |
+| ratecoord               | `github.com/baditaflorin/go-common/ratecoord`               | distributed rate-limit coordination client                                                                                           |
+| reqstats                | `github.com/baditaflorin/go-common/reqstats`                | per-request resource stats in `Server-Timing` and `X-Request-Stats` headers                                                          |
+| response                | `github.com/baditaflorin/go-common/response`                | canonical fleet JSON response envelope                                                                                               |
+| retry                   | `github.com/baditaflorin/go-common/retry`                   | context-aware retry with configurable backoff (exponential, full jitter)                                                             |
+| runtimetune             | `github.com/baditaflorin/go-common/runtimetune`             | container-aware Go runtime memory/GC tuning at process start                                                                         |
+| secrets                 | `github.com/baditaflorin/go-common/secrets`                 | client for the go-fleet-secrets vault (`GET /secrets/<name>`)                                                                        |
+| server                  | `github.com/baditaflorin/go-common/server`                  | canonical fleet HTTP server bootstrap                                                                                                |
+| shutdown                | `github.com/baditaflorin/go-common/shutdown`                | single-call graceful shutdown for `net/http` servers                                                                                 |
+| spiffe                  | `github.com/baditaflorin/go-common/spiffe`                  | adapts the SPIFFE Workload API to credentiallease identities                                                                         |
+| telemetry               | `github.com/baditaflorin/go-common/telemetry`               | W3C trace propagation, HTTP spans and OTLP/HTTP export                                                                               |
+| testhelpers/fakeexec    | `github.com/baditaflorin/go-common/testhelpers/fakeexec`    | in-memory fake for the command-runner seam used to shell out to git / go / docker                                                    |
+| testhelpers/fakegraph   | `github.com/baditaflorin/go-common/testhelpers/fakegraph`   | captures `graph.Event` values in tests                                                                                               |
+| testhelpers/fakekey     | `github.com/baditaflorin/go-common/testhelpers/fakekey`     | in-memory `apikey.Verifier` for tests                                                                                                |
+| testhelpers/httpmock    | `github.com/baditaflorin/go-common/testhelpers/httpmock`    | canonical `httptest.Server` factories for common upstream patterns                                                                   |
+| testhelpers/testclock   | `github.com/baditaflorin/go-common/testhelpers/testclock`   | thin re-export of `clock.NewMock` and `clock.Mock` for tests                                                                         |
+| validate                | `github.com/baditaflorin/go-common/validate`                | struct-tag-driven JSON request decoding and validation                                                                               |
+| version                 | `github.com/baditaflorin/go-common/version`                 | build identity variables injected via `-ldflags`                                                                                     |
+| wordbound               | `github.com/baditaflorin/go-common/wordbound`               | Unicode-aware word-boundary helpers (Go regexp `\b` is ASCII-only)                                                                   |
+| workpool                | `github.com/baditaflorin/go-common/workpool`                | bounded-concurrency worker pool                                                                                                      |
 
 ```go
 import (
@@ -605,10 +605,10 @@ plain `http.Client`.
 **Selftest and policy rule engines also live in `go-common`** (v0.17.0+ /
 v0.18.0+):
 
-| Package    | Import path                                      | Purpose                                                |
-|------------|--------------------------------------------------|--------------------------------------------------------|
-| selftest   | `github.com/baditaflorin/go-common/selftest`     | Canonical `/selftest` suite consumed by go-fleet-selftest-aggregator |
-| policyeval | `github.com/baditaflorin/go-common/policyeval`   | Small in-Go rule DSL: `Evaluate(rules []Rule, fact Fact) (Result, error)`, where `Result` carries `Decision`, `Matched` and `Explanation` — replaces ~5 custom rule engines |
+| Package    | Import path                                    | Purpose                                                                                                                                                                     |
+| ---------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| selftest   | `github.com/baditaflorin/go-common/selftest`   | Canonical `/selftest` suite consumed by go-fleet-selftest-aggregator                                                                                                        |
+| policyeval | `github.com/baditaflorin/go-common/policyeval` | Small in-Go rule DSL: `Evaluate(rules []Rule, fact Fact) (Result, error)`, where `Result` carries `Decision`, `Matched` and `Explanation` — replaces ~5 custom rule engines |
 
 ## Service conventions (required for fleet-runner compatibility)
 
@@ -637,6 +637,7 @@ The catalog is `services.json` (auto-derived). Per-service hand-curated
 patches live in `services-registry/overrides.json`. Four shapes coexist:
 
 **Per-slug patches** (current shape, unchanged):
+
 ```json
 {
   "python-proxy": { "proxy_read_timeout": "300s", "trl": 6 },
@@ -654,7 +655,7 @@ The fleet-wide backstop lives in `host-conventions.yaml`
 ```json
 {
   "infrastructure-fetch-cache": { "cpus": 4.0, "mem_limit": "3g" },
-  "html-proxy":                 { "cpus": 8,   "mem_limit": "8g", "pids_limit": 2048 }
+  "html-proxy": { "cpus": 8, "mem_limit": "8g", "pids_limit": 2048 }
 }
 ```
 
@@ -678,6 +679,7 @@ internal IP in this public repository. An explicit `render-compose
 > in `overrides.json`. Declare the cap there to make it durable.
 
 **Bulk rules** (reserved `$rules` key, since 2026-05-14):
+
 ```json
 {
   "$rules": [
@@ -685,7 +687,7 @@ internal IP in this public repository. An explicit `render-compose
       "name": "wildcard-cert-0crawl",
       "match": { "mesh": "0crawl" },
       "patch": { "cert_domain": "wildcard.0crawl.com" },
-      "why":   "All *.0crawl.com vhosts share the wildcard cert"
+      "why": "All *.0crawl.com vhosts share the wildcard cert"
     }
   ]
 }
@@ -694,7 +696,7 @@ internal IP in this public repository. An explicit `render-compose
 Match clauses: any of `ids` (explicit list), `mesh`, `kind`, `language`,
 `runtime`, `category` — combined with all-of semantics. Rules apply in
 declaration order; per-slug entries win. Use rules to encode "every
-*.0crawl.com service shares this cert_domain" as one rule instead of one
+\*.0crawl.com service shares this cert_domain" as one rule instead of one
 entry per service.
 
 **Multi-service repos** (via reserved `$expand` key) — one GitHub repo
@@ -715,9 +717,24 @@ the per-repo topic-derived entries take over with the same slugs.
       "parent_repo": "go-fleet-metrics-hub",
       "replace_parent": true,
       "children": [
-        { "id": "fleet-discovery",  "host_port": 18201, "container_port": 18203, "category": "observability" },
-        { "id": "fleet-grafana",    "host_port": 18202, "container_port": 3000,  "category": "observability" },
-        { "id": "fleet-prometheus", "host_port": 18203, "container_port": 18203, "category": "observability" }
+        {
+          "id": "fleet-discovery",
+          "host_port": 18201,
+          "container_port": 18203,
+          "category": "observability"
+        },
+        {
+          "id": "fleet-grafana",
+          "host_port": 18202,
+          "container_port": 3000,
+          "category": "observability"
+        },
+        {
+          "id": "fleet-prometheus",
+          "host_port": 18203,
+          "container_port": 18203,
+          "category": "observability"
+        }
       ],
       "why": "one compose project, several host_ports — register all so allocate-port sees them"
     }
@@ -757,8 +774,8 @@ upstream-managed container). See ADR-0031.
 }
 ```
 
-<!-- anchor id=external-registry-entries-external-0-externa repo=services-registry symbol=json:overrides.json#/$external/0/external_image verified=e08695528 digest=sha256:805c93ff45d59c082bfc5091c6952f1509d570112df0ae00025f5b21299bbf36 on=2026-10-12 -->
-<!-- anchor id=port-allocation-external-0-host-port repo=services-registry symbol=json:overrides.json#/$external/0/host_port verified=e08695528 digest=sha256:dcacdef7c85b353596110dc1c6981acca45e795993db25004de80ec851f16503 on=2026-10-12 -->
+<!-- anchor id=external-registry-entries-external-0-externa repo=services-registry symbol=json:overrides.json#/$external/0/external_image verified=701b06ad4 digest=sha256:805c93ff45d59c082bfc5091c6952f1509d570112df0ae00025f5b21299bbf36 on=2026-10-15 -->
+<!-- anchor id=port-allocation-external-0-host-port repo=services-registry symbol=json:overrides.json#/$external/0/host_port verified=701b06ad4 digest=sha256:dcacdef7c85b353596110dc1c6981acca45e795993db25004de80ec851f16503 on=2026-10-15 -->
 
 **Audit surface** — never grep overrides by hand:
 
@@ -768,7 +785,7 @@ fleet-runner overrides explain <slug>      # full breakdown per key + source
 fleet-runner overrides audit                # stale slugs, unused rules, key adoption counts
 ```
 
-<!-- anchor id=overrides-audit-surface-overrides repo=go_fleet_runner symbol=verb:overrides verified=6bebc4351 digest=sha256:3ccb1bbb2d4117a7ed0b687018199c778b18c21ea513ca6c7862a22483254627 on=2026-10-12 -->
+<!-- anchor id=overrides-audit-surface-overrides repo=go_fleet_runner symbol=verb:overrides verified=c6f1ea927 digest=sha256:3ccb1bbb2d4117a7ed0b687018199c778b18c21ea513ca6c7862a22483254627 on=2026-10-15 -->
 
 `fleet-runner converge` also surfaces overrides drift (stale per-slug
 entries that reference removed services; rules with no matching
@@ -780,8 +797,8 @@ Binary at `/usr/local/bin/fleet-runner` on **Builder LXC 108**. From
 any workspace dir on that LXC:
 
 ```
-fleet-runner health [--insecure]             # GET health_url of every service the services-dashboard API lists (no kind filter)
-fleet-runner smoke  [--insecure]             # GET example_url of every service the services-dashboard API lists that has one
+fleet-runner health [--insecure] [--strict] [--json]  # GET health_url of every service the services-dashboard API lists (no kind filter); --strict exits 1 when a probe failed and 2 when none could run (the default exits 0 once the list was fetched), --json prints one JSON object
+fleet-runner smoke  [--insecure] [--strict] [--json]  # GET example_url of every service the services-dashboard API lists that has one (same flags)
 fleet-runner pages-audit                     # verify pages_url 200s for every kind=static entry
 fleet-runner build-test                      # go test ./... in every kind=container,language=go workspace
 fleet-runner update-dep <mod@ver>            # bump dep across all language=go repos (or a subset: --repos a,b / --filter mesh=…,category=…,ids=a;b)
@@ -804,8 +821,8 @@ fleet-runner audit orphaned-listeners        # SSH to the dockerhost, diff live 
 fleet-runner stats                           # audit log + token usage summary
 ```
 
-<!-- anchor id=fleet-runner-verbs-health repo=go_fleet_runner symbol=verb:health verified=6bebc4351 digest=sha256:24e024c191e54f6cd107d1debc945163ed3b485d9bfebdeaf5fb15dee68f80cb on=2026-10-12 -->
-<!-- anchor id=bootstrap-compose-scaffold-compose repo=go_fleet_runner symbol=verb:scaffold-compose verified=101e9fb9f digest=sha256:22ed1710cf05923377e67ccb33ec2b670dc02eddd9487f6bbfd18e26734e81f1 on=2026-10-14 -->
+<!-- anchor id=fleet-runner-verbs-health repo=go_fleet_runner symbol=verb:health verified=c6f1ea927 digest=sha256:ba70ebf76d4be8c7445d6ec763afcff57e74d866cd65181530a874cd16bb9a64 on=2026-10-15 -->
+<!-- anchor id=bootstrap-compose-scaffold-compose repo=go_fleet_runner symbol=verb:scaffold-compose verified=c6f1ea927 digest=sha256:23d1e526896c43ec1592818e4befcbfc2c788adbdb204d3e30a9028b36657d31 on=2026-10-15 -->
 
 `new-service` does not set GitHub topics. `bin/generate.py` registers a repo
 only with a `mesh-<mesh>` topic, and also reads `lang-<x>` (defaults to go on
@@ -822,7 +839,10 @@ fleet-runner deploy <repo> --bootstrap --force-build --skip-smoke
 ```
 
 `scaffold-compose --missing` will find every container repo without a
-compose at HEAD and render one for each in a single pass.
+compose at HEAD and render one for each in a single pass. On the shared
+checkout it walks the repositories named by `origin/main`'s `services.json`
+and stops with an error (exit 1) when that file is null, empty or names no
+repository, instead of falling back to a directory walk.
 
 `update-dep`, `rollout`, `overrides list`, `audit` and the registry-driven
 sweep verbs (`sed`, `shape`, `template`) accept
@@ -843,30 +863,36 @@ name-collision repos; the keystore is not in it). Only `health`, `smoke`,
 (plus `ai-context`, `dep-cve`, `e2e`, `export-collection`, `tokens`)
 accept `--tokens-used N --model NAME` for LLM accounting. **`kind: static`
 entries are skipped by default by `build-test`, `update-dep`, `rollout`
-and `scaffold-*`**; `deploy-all`, `exec`, `inject` and `push` do not
-filter by kind — don't deploy-all or health-check a static Pages site
+and `scaffold-*`** (`build-test` always uses `kind=container,language=go`; `update-dep` and
+`rollout` default to it and fill whichever of the two keys your `--filter` leaves unset, so
+`--filter kind=static` becomes `kind=static,language=go`; `scaffold-compose` and
+`scaffold-service-yaml` always skip non-container entries, and `scaffold-compose` also skips a
+container entry without `host_port` or `container_port`). `deploy-all`, `exec`, `inject`
+and `push` do not filter by kind — don't deploy-all or health-check a static Pages site
 (use `pages-audit`).
 
-<!-- anchor id=static-skip-gomoddirsfiltered repo=go_fleet_runner symbol=go:main.go#goModDirsFiltered verified=6bebc4351 digest=sha256:812d05fe33bb54ea47a6380d38259fde77c078f14ac544eca92648e64d806460 on=2026-10-12 -->
+<!-- anchor id=static-skip-gomoddirsfiltered repo=go_fleet_runner symbol=go:main.go#goModDirsFiltered verified=c6f1ea927 digest=sha256:531ac5a72817291032363a209625dab2174e7fb704a77d73c8c0256a574e5c3a on=2026-10-15 -->
 
 ### All fleet-runner verbs (generated)
 
 Generated from the dispatch switch in `go_fleet_runner/main.go`; `fleet-runner --help` lists fewer. Do not edit by hand.
 
 <!-- BEGIN GENERATED:verbs repo=go_fleet_runner -->
-_120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
 
-`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-pool`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `graph-context`, `grep`, `health`, `horizon`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `key`, `loadtest`, `mirror-clone`, `mirror-fetch`, `new-service`, `nginx-drift-audit`, `nginx-render`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-guardian`, `pool-metrics-targets`, `pool-plan`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `real-data-loops`, `remediate`, `render-compose`, `replay`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
+_131 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
+
+`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-journal`, `deploy-pool`, `deploy-recover`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `doctor`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `github-budget`, `graph-context`, `grep`, `health`, `horizon`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `key`, `loadtest`, `mcp`, `mirror-clone`, `mirror-fetch`, `new-service`, `next`, `nginx-drift-audit`, `nginx-render`, `notify`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-balance`, `pool-guardian`, `pool-metrics-targets`, `pool-plan`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `pyroscope`, `real-data-loops`, `remediate`, `render-compose`, `replay`, `rollback`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `who`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
+
 <!-- END GENERATED:verbs -->
 
 ## Infrastructure topology
 
-| Target          | SSH                                                            |
-|-----------------|----------------------------------------------------------------|
-| Bastion         | `ssh root@0docker.com`                                         |
-| Builder LXC 108 | `ssh root@0docker.com 'pct exec 108 -- bash -lc "<cmd>"'`      |
-| Dockerhost VM   | `ssh -J root@0docker.com ubuntu_vm@10.10.10.20`                |
-| Webgateway      | `ssh -J root@0docker.com florin@10.10.10.10`                   |
+| Target          | SSH                                                       |
+| --------------- | --------------------------------------------------------- |
+| Bastion         | `ssh root@0docker.com`                                    |
+| Builder LXC 108 | `ssh root@0docker.com 'pct exec 108 -- bash -lc "<cmd>"'` |
+| Dockerhost VM   | `ssh -J root@0docker.com ubuntu_vm@10.10.10.20`           |
+| Webgateway      | `ssh -J root@0docker.com florin@10.10.10.10`              |
 
 - **Builder LXC 108** is a Proxmox container on `0docker.com`. Hosts
   per-service build workspaces at `/root/workspace/<repo>/`, the
@@ -912,7 +938,6 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
   are skipped), so HEADs are usually fresh, but a skipped checkout
   can still lag `origin/main`. Three
   failure modes a stale checkout causes, all observed live 2026-05-16:
-
   1. **Wrong-direction drift detection.** Reading
      `/root/workspace/<repo>/service.yaml` as "the intended
      version" surfaces a months-old version string and triggers a
@@ -928,10 +953,9 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
      branches diverge invisibly until one stomps the other.
 
   The hard rules:
-
   - **Before reading any repo state** (`service.yaml`, source,
     tests, `go.mod`): `cd /root/workspace/<repo> && git fetch
-    origin --tags` first. Then read via `git show origin/main:<file>`
+origin --tags` first. Then read via `git show origin/main:<file>`
     or a fresh `git worktree add ... origin/main`. Never the
     working-tree file directly.
   - **Before triaging a "broken" repo**: re-run the failure against
@@ -948,6 +972,7 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
     — it runs against the working tree. Treat its output as a
     lower bound, not authoritative; confirm any "failure" against
     a fresh worktree before triaging.
+
 - **Dockerhost VM** runs the service containers. Compose dirs:
   `/opt/services/<repo>/`, `/opt/security/<repo>/`,
   `/home/ubuntu_vm/pentest/<repo>/`.
@@ -961,66 +986,67 @@ _120 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do 
   Retention and stream coverage must be verified on VM 630 before pruning
   old snapshots.
 
-<!-- anchor id=rule-zero-worktrees-build-test repo=go_fleet_runner symbol=verb:build-test verified=6bebc4351 digest=sha256:48d16ff7ed1f442a4e042868920a42f36a6313ad59abafd2166901e5f5f1121a on=2026-10-12 -->
+<!-- anchor id=rule-zero-worktrees-build-test repo=go_fleet_runner symbol=verb:build-test verified=c6f1ea927 digest=sha256:48d16ff7ed1f442a4e042868920a42f36a6313ad59abafd2166901e5f5f1121a on=2026-10-15 -->
 
-  **Query it with `bin/oo`, not hand-rolled curl.** `services-registry/bin/oo`
-  is the deterministic CLI (`logs`, `grep`, `errors`, `since-redeploy`,
-  `context`, `compare`, `restarts`, `rate`, `versions`, `new`, `check`,
-  `save`/`saved`/`run`, `summary`, `link`, `containers`, `hosts`, `tail`,
-  `query`, `streams`, `stream-info`) — run `bin/oo` with no args for full
-  usage rather than duplicating it here; the script's own header comment
-  is the source of truth for what each command does and its defaults, and
-  this list will drift if a command gets added/renamed without this line
-  being touched too. Needs `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` /
-  `OPENOBSERVE_URL` set (see `bin/fleet-runner.env.example`; obtain
-  `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` from the approved protected
-  credential path described in private `fleet-state/OPS.md`; never commit them
-  to any repo). Proxies every request through the bastion via
-  SSH to `https://openobserve.0own.com`. `query`/`run` default to compact JSON with OpenObserve's own
-  response metadata stripped (pass `--pretty` for indented + full
-  metadata) — the other commands print plain text (except `stream-info`,
-  which prints the stream schema as JSON). Every user-supplied value going into a WHERE clause is
-  SQL-escaped (`sql_escape` in the script) and every search request
-  normalizes failures into a consistent, non-silent error shape (`_oo_error`
-  — never a raw traceback, never indistinguishable from "zero results";
-  `streams` / `stream-info` handle failures themselves) — copy
-  both patterns if you add a new command that talks to OpenObserve.
+**Query it with `bin/oo`, not hand-rolled curl.** `services-registry/bin/oo`
+is the deterministic CLI (`logs`, `grep`, `errors`, `since-redeploy`,
+`context`, `compare`, `restarts`, `rate`, `versions`, `new`, `check`,
+`save`/`saved`/`run`, `summary`, `link`, `containers`, `hosts`, `tail`,
+`query`, `streams`, `stream-info`) — run `bin/oo` with no args for full
+usage rather than duplicating it here; the script's own header comment
+is the source of truth for what each command does and its defaults, and
+this list will drift if a command gets added/renamed without this line
+being touched too. Needs `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` /
+`OPENOBSERVE_URL` set (see `bin/fleet-runner.env.example`; obtain
+`OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` from the approved protected
+credential path described in private `fleet-state/OPS.md`; never commit them
+to any repo). Proxies every request through the bastion via
+SSH to `https://openobserve.0own.com`. `query`/`run` default to compact JSON with OpenObserve's own
+response metadata stripped (pass `--pretty` for indented + full
+metadata) — the other commands print plain text (except `stream-info`,
+which prints the stream schema as JSON). Every user-supplied value going into a WHERE clause is
+SQL-escaped (`sql_escape` in the script) and every search request
+normalizes failures into a consistent, non-silent error shape (`_oo_error`
+— never a raw traceback, never indistinguishable from "zero results";
+`streams` / `stream-info` handle failures themselves) — copy
+both patterns if you add a new command that talks to OpenObserve.
 
-  **Check `bin/oo streams` and host coverage before relying on a stream.**
-  The active 0own instance returned `Search stream not found: default` on
-  2026-10-07, so do not assume host/journald logs are available. `docker_logs`
-  contains container stdout/stderr only for hosts with a running shipper,
-  tagged `container_name` / `host` / `image` / compose labels. Missing rows
-  are not evidence of zero activity or a clean soak. `docker logs` and the
-  `json-file` driver are unchanged; centralized collection is a second,
-  independent path.
+**Check `bin/oo streams` and host coverage before relying on a stream.**
+The active 0own instance returned `Search stream not found: default` on
+2026-10-07, so do not assume host/journald logs are available. `docker_logs`
+contains container stdout/stderr only for hosts with a running shipper,
+tagged `container_name` / `host` / `image` / compose labels. Missing rows
+are not evidence of zero activity or a clean soak. `docker logs` and the
+`json-file` driver are unchanged; centralized collection is a second,
+independent path.
 
-  **How `docker_logs` gets populated**: a small Vector (`timberio/vector`,
-  pinned by digest) container named `vector-log-shipper` runs at
-  `/opt/observability/vector-log-shipper/` on enrolled Docker hosts. The
-  GitHub email runner host was a verified coverage gap on 2026-10-07: five
-  containers were running, no shipper was present, and authenticated search
-  found no host records in the checked window. It reads container logs via the
-  Docker socket — the same
-  read path `docker logs` uses — and ships a copy to the single central
-  OpenObserve instance; it does not touch each container's own logging driver
-  or config, so nothing about existing services changes, and no per-service
-  compose edits are needed. New containers are picked up automatically. The
-  0mcp fleet reaches the same instance through its public TLS endpoint because
-  its private LAN is independent. See `docs/observability/CENTRAL-OPENOBSERVE.md`
-  for the host contract, disk buffering, and rollout procedure. **Gotcha found
-  wiring this up**: Vector 0.57.0's `${VAR}` env-var interpolation does
-  not reliably substitute inside the `http` sink's `uri`/`auth.*`
-  fields in this image — config loads fine but every request fails
-  with "invalid uri character" / 401. Don't fight it: render
-  `vector.toml` with real values baked in before deploying (a plain
-  template + `sed`/similar is enough) rather than relying on Vector's
-  own interpolation for those fields.
+**How `docker_logs` gets populated**: a small Vector (`timberio/vector`,
+pinned by digest) container named `vector-log-shipper` runs at
+`/opt/observability/vector-log-shipper/` on enrolled Docker hosts. The
+GitHub email runner host was a verified coverage gap on 2026-10-07: five
+containers were running, no shipper was present, and authenticated search
+found no host records in the checked window. It reads container logs via the
+Docker socket — the same
+read path `docker logs` uses — and ships a copy to the single central
+OpenObserve instance; it does not touch each container's own logging driver
+or config, so nothing about existing services changes, and no per-service
+compose edits are needed. New containers are picked up automatically. The
+0mcp fleet reaches the same instance through its public TLS endpoint because
+its private LAN is independent. See `docs/observability/CENTRAL-OPENOBSERVE.md`
+for the host contract, disk buffering, and rollout procedure. **Gotcha found
+wiring this up**: Vector 0.57.0's `${VAR}` env-var interpolation does
+not reliably substitute inside the `http` sink's `uri`/`auth.*`
+fields in this image — config loads fine but every request fails
+with "invalid uri character" / 401. Don't fight it: render
+`vector.toml` with real values baked in before deploying (a plain
+template + `sed`/similar is enough) rather than relying on Vector's
+own interpolation for those fields.
 
-  Adding a **new** docker host to the fleet should get a
-  `vector-log-shipper` too, following the same compose shape (see the
-  existing deployments as the reference) — this isn't automated by
-  `fleet-runner` yet.
+Adding a **new** docker host to the fleet should get a
+`vector-log-shipper` too, following the same compose shape (see the
+existing deployments as the reference) — this isn't automated by
+`fleet-runner` yet.
+
 - **Webgateway** runs nginx (the public TLS terminator) and the
   keystore-aware `auth_request` flow. vhosts live in
   `/etc/nginx/sites-enabled/<host>.{http,https}.conf`. Most are regular
@@ -1036,7 +1062,6 @@ Operational topology, env-var names and rotation procedures are in **private**
 `fleet-state/OPS.md`; credential values live in `go-fleet-secrets` or
 protected host files, never in OPS.md — never commit SSH targets, IPs, or
 tokens to service repos.
-  
 
 ## Session continuity — handing off to a fresh agent
 
@@ -1053,11 +1078,11 @@ for the rest.
 **Three primitives let any agent ship a brand-new service from "local
 code" to "live with DNS + scope + secrets" without operator intervention:**
 
-| Service | Role | Port |
-|---------|------|------|
-| [`go-fleet-secrets`](https://github.com/baditaflorin/go-fleet-secrets) | Encrypted vault for tokens (Hetzner, GitHub PAT, SMTP, platform API keys) | 18140 |
-| [`go-fleet-dns-sync`](https://github.com/baditaflorin/go-fleet-dns-sync) | Registry → Hetzner Cloud DNS reconciler (30-min ticker) | 18141 |
-| [`go-fleet-preflight`](https://github.com/baditaflorin/go-fleet-preflight) | Pre-deploy checklist (registry + DNS + port + secrets) | 18142 |
+| Service                                                                    | Role                                                                      | Port  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
+| [`go-fleet-secrets`](https://github.com/baditaflorin/go-fleet-secrets)     | Encrypted vault for tokens (Hetzner, GitHub PAT, SMTP, platform API keys) | 18140 |
+| [`go-fleet-dns-sync`](https://github.com/baditaflorin/go-fleet-dns-sync)   | Registry → Hetzner Cloud DNS reconciler (30-min ticker)                   | 18141 |
+| [`go-fleet-preflight`](https://github.com/baditaflorin/go-fleet-preflight) | Pre-deploy checklist (registry + DNS + port + secrets)                    | 18142 |
 
 The full operational playbook — bootstrap, secret rotation, "how to add
 a new service unattended", agent anti-patterns — lives in
@@ -1109,7 +1134,7 @@ ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner audit --all'
 ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner bump-version go_<repo> patch --push'
 ```
 
-<!-- anchor id=fleet-runner-invocation-converge repo=go_fleet_runner symbol=verb:converge verified=6bebc4351 digest=sha256:58d68013fea726aa56947ab5cad42f19ad6a7a44d55b93d66e0b7ec1ee0b23cd on=2026-10-12 -->
+<!-- anchor id=fleet-runner-invocation-converge repo=go_fleet_runner symbol=verb:converge verified=c6f1ea927 digest=sha256:6aeecfc767d0fee12606a0fdea823544de8046cec858b34a9c250f9531b11a1e on=2026-10-15 -->
 
 If you don't have SSH access to `0docker.com`, **stop and ask the user
 to run the command, copy-pasting the exact line above**. Do not
@@ -1170,7 +1195,7 @@ copy elsewhere, mirror the same shape.
 > **A host_port collision does NOT fail loudly — it clobbers a live
 > service.** `fleet-runner deploy` resolves the dockerhost compose dir
 > **by host_port**. If you hand-pick a port another service already
-> owns, `deploy <your-service>` finds the *other* service's
+> owns, `deploy <your-service>` finds the _other_ service's
 > `/opt/services/<that-repo>/` directory, overwrites its
 > `docker-compose.yml` with your image, and rolls your container in
 > place — **silently evicting the live service that owned the port**.
@@ -1181,7 +1206,7 @@ copy elsewhere, mirror the same shape.
 >
 > Recovery if you collide: (1) `docker compose down` your squatter in
 > the victim's dir to free the port; (2) `fleet-runner deploy
-> <victim_repo> --bootstrap --force-build` — a *plain* deploy is fooled
+<victim_repo> --bootstrap --force-build` — a _plain_ deploy is fooled
 > into a no-op when the squatter happens to report the same version, so
 > force it; (3) move your service to a free port in BOTH the registry
 > (`overrides.json` → regen → push) and the repo (Dockerfile, compose,
@@ -1196,6 +1221,18 @@ ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner allocate-port 
 # Multiple at once:
 ssh root@0docker.com 'pct exec 108 -- /usr/local/bin/fleet-runner allocate-port --count 3'
 ```
+
+Until you land the port in `overrides.json`, nothing records the proposal, so two agents can be handed the
+same number. To prevent that, reserve it: `fleet-runner allocate-port --reserve <slug> [--ttl 24h] [--note ...]
+[--count N]` writes the proposal to the builder's shared ledger (`$FLEET_STATE_DIR/state/port-reservations.json`, falling back to
+`/var/lib/fleet-runner/`; host-local, never committed). `<slug>` must be the service's registry `id` (not the repo directory or the `slug` field), or `deploy` will refuse its own port. A second call for the same slug returns the same port(s) and refreshes the TTL
+(default 24 h). `--list-reservations` prints the unexpired ones; `--release <slug>` drops your own (`--force
+--reason ...` drops someone else's and is audited). In the single-image compose path, `deploy` refuses a service whose `host_port` is reserved
+by a different slug and releases the slug's own reservation after a successful deploy (`runtime: coolify` and
+compose-project deploys get neither the check nor the release). `converge` reports reservations whose slug
+is registered on a different `host_port`, and expired ones it could not prune (an unreadable ledger is listed under the same heading).
+
+<!-- anchor id=port-allocation-reserve-flags repo=go_fleet_runner symbol=go:port_reserve.go#addPortReserveFlags verified=c6f1ea927 digest=sha256:dae1d00bca16e969095e844aa2d2aee1bc1427bdb6d9acd5500cc3385ea0628e on=2026-10-15 -->
 
 **Manual fallback (when canonical isn't reachable):**
 
@@ -1228,8 +1265,9 @@ its port: for a third-party container add an `$external` row (`id`,
 `host_port`, `repo_url`, plus `container_port`) to `overrides.json`; for a
 first-party repo add the `mesh-*` GitHub topics (a per-slug patch alone
 creates no entry), then set `host_port` in its `overrides.json` patch. Run
-`python3 bin/generate.py` and push. `allocate-port` is read-only and only
-proposes a free port. (To find live listeners with no registry row at all,
+`python3 bin/generate.py` and push. A plain `allocate-port` records nothing and never edits the registry; it
+only proposes a free port, skipping reserved ones (it still locks the ledger and prunes expired
+reservations). (To find live listeners with no registry row at all,
 `fleet-runner audit orphaned-listeners` checks the dockerhost against
 `services.json`.)
 Your service keeps its original port. Only reallocate
@@ -1280,7 +1318,7 @@ git push
 git push origin 1.2.4      # tags don't ride `git push` by default
 ```
 
-Tag *after* the commit, push *both*.
+Tag _after_ the commit, push _both_.
 
 ### Recipe — Deploying a service
 
@@ -1312,7 +1350,7 @@ is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
   checkout therefore no longer feeds old data into the registry lookups
   of `nginx-render`, `deploy`, `render-compose` or `whois` (on
   2026-10-12 it was 212 commits behind and made `nginx-render
-  --exact-filter proxy` refuse a pooled service as "not explicitly
+--exact-filter proxy` refuse a pooled service as "not explicitly
   marked replicable"). An explicit `--services <path>` is never
   touched. The check only fetches: it moves
   `refs/remotes/origin/main` and adds objects, and never changes the
@@ -1335,7 +1373,7 @@ is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
   read the same way by everything that acts on the host it picks
   (`deploy`, `deploy-authorized`, `deploy-all`'s gate, `placement-plan`,
   `nginx-render`'s pools and the pool tools, `stage`, `port-heal
-  --reconcile` (its placement half), `drift`, `render-compose`,
+--reconcile` (its placement half), `drift`, `render-compose`,
   `dns-heal`, `compose-image-heal`) and, since v0.7.343, by
   `audit compose-drift`. The file may be absent (a 404 from the CDN
   means no placement), but a checkout that cannot be verified while the
@@ -1355,7 +1393,8 @@ is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
   a loud bypass warning and lands an audit-log row that records the reason,
   precisely so it's never silently routine.
 
-<!-- anchor id=skip-cosign-reason repo=go_fleet_runner symbol=go:deploy_cosign.go#resolveSkipCosignReason verified=02bf8378f digest=sha256:f9d3e56291db47b14ad0e2e8e79a585d5e19b9e87549db4d6c56dfcbb84e9657 on=2026-10-12 -->
+<!-- anchor id=skip-cosign-reason repo=go_fleet_runner symbol=go:deploy_cosign.go#resolveSkipCosignReason verified=c6f1ea927 digest=sha256:f9d3e56291db47b14ad0e2e8e79a585d5e19b9e87549db4d6c56dfcbb84e9657 on=2026-10-15 -->
+
 `fleet-runner deploy` is idempotent end-to-end. The pipeline is built
 to fail fast BEFORE touching prod, and to refuse to declare success
 unless every check confirms the new image actually carries the new
@@ -1386,7 +1425,7 @@ image-gc.
    on Builder LXC 108, run `go build ./...` and `go test ./...`.
    Failure aborts here; prod is not touched.
 4. **Build + push** — `docker buildx build --platform linux/amd64
-   --provenance=false --push` tagging both `:<version>` and
+--provenance=false --push` tagging both `:<version>` and
    `:latest`.
 5. **Pull + digest assertion** — `docker compose pull` on dockerhost,
    then `docker inspect` the new `:<short-sha>` image ID. If it equals
@@ -1402,7 +1441,7 @@ image-gc.
    trust the container and proceed.
 8. **Smoke gate** — three probes: `GET /health` must be 200 (a 404 is
    skipped as "not implemented", like `/selftest`), `GET
-   /selftest` must be 200 (or 404 = "service didn't implement it,
+/selftest` must be 200 (or 404 = "service didn't implement it,
    skip"); 503 is the codified "internal sources errored" signal and
    fails the gate. `GET /version` must match the version we just
    pushed — catches "container restarted but the image didn't roll".
@@ -1519,7 +1558,7 @@ Three non-obvious rules:
   cloned on a given host. rollout
   reports a "code-grep is PARTIAL" warning when repos are missing.
 - **Always pass the actual LATEST dep version**, never a stale literal —
-  `go get dep@vOld` on a repo already ahead silently *downgrades* it.
+  `go get dep@vOld` on a repo already ahead silently _downgrades_ it.
 
 ### Recipe — Closing a capability gap (gap → fix loop)
 
@@ -1614,7 +1653,7 @@ for the canonical pattern.
    fleet-pipe/svg-icon-inventory incident). Always take the number from
    `allocate-port`.
 
-<!-- anchor id=port-allocation-containercomposedir repo=go_fleet_runner symbol=go:deploy_compose_sync.go#containerComposeDir verified=6bebc4351 digest=sha256:b535184bb43b793d76cc57b963002943650dd3d1508799079a055a8873f8165f on=2026-10-12 -->
+<!-- anchor id=port-allocation-containercomposedir repo=go_fleet_runner symbol=go:deploy_compose_sync.go#containerComposeDir verified=c6f1ea927 digest=sha256:5ec8705c755cf8785a2e6c441026af60794d0f5061f68dbc49a44a2606b31ff9 on=2026-10-15 -->
 
 2. **"I bumped the version in `service.yaml` and pushed."** Did you tag
    git AND push the tag AND bump `service.yaml`/`Dockerfile`/`CHANGELOG.md`?
@@ -1654,7 +1693,7 @@ for the canonical pattern.
    `git push` rejected with "would clobber existing tag", recovery
    required manual `git tag -d <ver>`. If you hit that on an older
    binary, the recovery is still: `git -C /root/workspace/<repo>
-   tag -d <ver>` then re-run bump-version.
+tag -d <ver>` then re-run bump-version.
 
 9. **`./binary &` smoke tests on Builder LXC 108.** Don't. The builder
    is a build/CI and `fleet-runner` host (Woodpecker, buildkit, registry
@@ -1664,7 +1703,7 @@ for the canonical pattern.
    the binary backgrounds, the agent's SSH session ends, and the
    process becomes an orphan (`PPid=1`) listening on whichever port it
    bound. Twelve such orphans were found on 2026-05-21 — three of them
-   silently squatting *registered* host_ports (e.g. 18107/18224),
+   silently squatting **registered** `host_ports` (e.g. 18107/18224),
    poised to confuse the next agent who deploys the canonical service
    to dockerhost and runs `ss -tlnp` to debug. Canonical smoke is the
    `fleet-runner deploy` smoke gate against the dockerhost-side
@@ -1672,7 +1711,7 @@ for the canonical pattern.
    need to exercise the handler before `deploy`, run `go test ./...`
    (`httptest` servers bind an ephemeral `127.0.0.1` port in-process and
    die with the test) — no orphan risk. If you
-   *must* bind a port, use `127.0.0.1:0` (ephemeral) and `kill` it on
+   **must** bind a port, use `127.0.0.1:0` (ephemeral) and `kill` it on
    the same line that started it.
 
 ## Deploy failure class — a saturated slow upstream sheds load and rolls back deploys (2026-06-08)
@@ -1680,12 +1719,12 @@ for the canonical pattern.
 **Symptom.** `fleet-runner deploy <enricher>` (or any container deploy)
 rolls back at the smoke gate because the new image's `GET /selftest`
 times out — even though `/health` is green and the code is fine. The
-real cause is somewhere else entirely: a *different* service is piling
+real cause is somewhere else entirely: a _different_ service is piling
 goroutines on a slow shared upstream and starving the whole dockerhost's
 scheduler, so every service's `/selftest` probe stalls past its 8 s
 deadline. One service's overload silently fails everyone's deploys.
 
-<!-- anchor id=deploy-smoke-gate-max-time-8 repo=go_fleet_runner symbol="regex:deploy_smoke_direct.go#--max-time 8" verified=6bebc4351 digest=sha256:3a797aed5032adaf9bbbb07a81ac6160f1b0cae4a5dc3442e4c9e95d4d7fd8be on=2026-10-12 -->
+<!-- anchor id=deploy-smoke-gate-max-time-8 repo=go_fleet_runner symbol="regex:deploy_smoke_direct.go#--max-time 8" verified=c6f1ea927 digest=sha256:3a797aed5032adaf9bbbb07a81ac6160f1b0cae4a5dc3442e4c9e95d4d7fd8be on=2026-10-15 -->
 
 The canonical instance: `go_infrastructure_fetch_cache` (port 18205)
 proxies render requests to `go-js-proxy` / `go-html-proxy`, each held up
@@ -1717,7 +1756,7 @@ then only `loadshed_admitted_total` and `loadshed_in_flight` appear). A
 sustained nonzero rate is the "this box is shedding load" signal; no
 Prometheus alert rule uses it as of 2026-10-13.
 
-<!-- anchor id=loadshed-loadshed-shed-total repo=go-common symbol=regex:promx/loadshed.go#loadshed_shed_total verified=879bbaa1c digest=sha256:9b6e372a22aea8df5258e24235627c7efd149b046ecd34d5e0b5a70cd8bda9c2 on=2026-10-12 -->
+<!-- anchor id=loadshed-loadshed-shed-total repo=go-common symbol=regex:promx/loadshed.go#loadshed_shed_total verified=4d3571d49 digest=sha256:9b6e372a22aea8df5258e24235627c7efd149b046ecd34d5e0b5a70cd8bda9c2 on=2026-10-15 -->
 
 **Live mitigation (no rebuild).** The render cap is env-tunable. Lower
 `MAX_RENDER_INFLIGHT` to shed sooner and shrink the pile-up, then
@@ -1779,7 +1818,7 @@ go func(k string, ts int64) {
 }(key, now)
 ```
 
-<!-- anchor id=sqlite-safety-busy-timeout-d repo=go-fleet-dns-sync symbol=regex:store.go#busy_timeout\(\d+\) verified=2885f9e34 digest=sha256:a59a128314f9a458b5400ad42412ae1b367eab034cdab2ba4ca1c9954fafbc4e on=2026-10-12 -->
+<!-- anchor id=sqlite-safety-busy-timeout-d repo=go-fleet-dns-sync symbol=regex:store.go#busy_timeout\(\d+\) verified=b6ff0f175 digest=sha256:a59a128314f9a458b5400ad42412ae1b367eab034cdab2ba4ca1c9954fafbc4e on=2026-10-15 -->
 
 **Audit one-liner** — run this from the workspace root (the directory that
 holds the sibling repos; `FLEET_RUNNER_WORKSPACE_ROOT`, default
@@ -1830,8 +1869,8 @@ selftest? `safehttp.WithoutFetchCache()` (per-client) or
 
 Since go_fleet_runner v0.7.393, `deploy`'s direct smoke probe retries up to 5 times, 4 s apart, when a probe gets no HTTP response at all (curl prints `000`: connection refused, reset or timeout), so a container that is not listening yet is not rolled back for that; any HTTP status, including 4xx and 5xx, is judged on the first answer.
 
-<!-- anchor id=selftest-fetch-cache-probedirect repo=go_fleet_runner symbol=go:deploy_smoke_direct.go#probeDirect verified=101e9fb9f digest=sha256:9eb4e4a3eaa7e56651f227e3815e59452872711f8e19092ae6827f7dd0eb9ab4 on=2026-10-14 -->
-<!-- anchor id=selftest-fetch-cache-withoutfetchcachecontex repo=go-common symbol=go:safehttp/fetchcache.go#WithoutFetchCacheContext verified=879bbaa1c digest=sha256:e3bc237b8580886297b9c77d3ba644af87f623a770d6a6de9aeb7e66a724b6a9 on=2026-10-12 -->
+<!-- anchor id=selftest-fetch-cache-probedirect repo=go_fleet_runner symbol=go:deploy_smoke_direct.go#probeDirect verified=c6f1ea927 digest=sha256:9eb4e4a3eaa7e56651f227e3815e59452872711f8e19092ae6827f7dd0eb9ab4 on=2026-10-15 -->
+<!-- anchor id=selftest-fetch-cache-withoutfetchcachecontex repo=go-common symbol=go:safehttp/fetchcache.go#WithoutFetchCacheContext verified=4d3571d49 digest=sha256:e3bc237b8580886297b9c77d3ba644af87f623a770d6a6de9aeb7e66a724b6a9 on=2026-10-15 -->
 
 ## Per-repo `CHANGELOG.md` — capture what changed at each version
 
@@ -1844,6 +1883,7 @@ does not count):
 ## <version> — <YYYY-MM-DD>
 
 ### Added | Changed | Fixed | Removed
+
 - one bullet per meaningful change; lead breaking changes with **BREAKING:**
 ```
 
@@ -1866,8 +1906,8 @@ write failure only prints a WARNING; versions bumped by hand are not checked). T
 omission — don't bump a service's version without leaving a changelog
 entry.
 
-<!-- anchor id=bump-version-prependchangelogentry repo=go_fleet_runner symbol=go:bump_version.go#prependChangelogEntry verified=6bebc4351 digest=sha256:c4c6a3718d7d469d5b7fc44349ccc731532ae7bd336b1e673be0d798ff7aa239 on=2026-10-12 -->
-<!-- anchor id=bump-version-changelogbody repo=go_fleet_runner symbol=go:bump_version.go#changelogBody verified=6bebc4351 digest=sha256:20f443bb5cbc821951c78d047d4971cf6d7e5ed81b65a7ffc8c5c193c18b3f87 on=2026-10-12 -->
+<!-- anchor id=bump-version-prependchangelogentry repo=go_fleet_runner symbol=go:bump_version.go#prependChangelogEntry verified=c6f1ea927 digest=sha256:c4c6a3718d7d469d5b7fc44349ccc731532ae7bd336b1e673be0d798ff7aa239 on=2026-10-15 -->
+<!-- anchor id=bump-version-changelogbody repo=go_fleet_runner symbol=go:bump_version.go#changelogBody verified=c6f1ea927 digest=sha256:20f443bb5cbc821951c78d047d4971cf6d7e5ed81b65a7ffc8c5c193c18b3f87 on=2026-10-15 -->
 
 ## Local workflow
 
@@ -1890,7 +1930,7 @@ entry.
   gate `fleet-runner deploy`'s pre-flight already runs — and the
   non-Go repos run their own checks. A
   cron every six hours (`docker builder prune -af --filter
-  unused-for=6h`, at :15), a weekly prune and disk-pressure guard
+unused-for=6h`, at :15), a weekly prune and disk-pressure guard
   scripts keep the LXC's build-cache disk usage bounded. Nearly every
   `go.mod` repo carries a `.woodpecker.yml`; migrating repos to the PR
   plus default-branch trigger template runs through
@@ -1922,6 +1962,6 @@ Inspect the fleet deterministically with:
 fleet-runner change-receipts --sort prs --top 50
 ```
 
-<!-- anchor id=release-receipts-change-receipts repo=go_fleet_runner symbol=verb:change-receipts verified=6bebc4351 digest=sha256:eaa3a86295d8c67e4f365a142452f7130e41755abcc05b3908232a72930cde6f on=2026-10-12 -->
+<!-- anchor id=release-receipts-change-receipts repo=go_fleet_runner symbol=verb:change-receipts verified=c6f1ea927 digest=sha256:d5c53b0c30578c774ff4eca23d7a0103c764c0c7ee443795c7e7fb1645d59509 on=2026-10-15 -->
 
 That command reports commits, PR-number receipts, changelog-backed version counts and latest activity per service (add `--json` to also get each service's current version). Static applications are outside the changelog chain (almost none carry a `CHANGELOG.md` or version) and `change-receipts` skips them by default (its `-filter` defaults to `kind=container`); the published GitHub Pages build for the commit is the available deployment evidence, but nothing records it as a receipt.
