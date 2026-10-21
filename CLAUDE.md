@@ -109,7 +109,7 @@ not after something breaks fleet-wide:
 
 | Touching...                                               | Do this first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| One `go_<thing>` service, no shared code                  | Just `fleet-runner deploy <repo>` — you're covered, unless the service has a replica pool: then roll every replica with `fleet-runner deploy-pool <repo>` (a plain `deploy` rolls one replica only and skews the pool; from fleet-runner v0.7.688 it refuses, exit 2, and says so).                                                                                                                                                                                                                                                                                            |
 | `safehttp`, middleware, auth, or the gateway              | `fleet-runner deploy-all --repos <lowest-blast-radius-repo>,<others> --canary 1 --soak 90s --gate-no-restarts` first (staged canary + gate; `--repos` order is rollout order; see `fleet-runner deploy-all --help`). Never a fleet-wide rollout on first touch here.                                                                                                                                                                                                                                                                                                           |
 | `go-common` or a `go-fleet-*` primitive (has >1 consumer) | See "Fleet-wide changes — change go-common, not consumers" below — one bad edit breaks every consumer at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | DNS records or secrets                                    | Read `RUNBOOK-UNATTENDED.md` first. DNS only via the Hetzner Cloud API (`go-fleet-dns-sync` reads vault entry `hcloud_token`, env fallback `HCLOUD_TOKEN`; `fleet-runner deploy` reads `HETZNER_TOKEN`) — never `dns.hetzner.com`. Secrets originate in `go-fleet-secrets`; never commit them to repos, compose files or `services.json`. `fleet-runner deploy` materializes the values a service needs into a mode-600 per-service `.env` on the dockerhost and into container env, so never print or copy it. `fleet-runner` reads `HETZNER_TOKEN` from its own process env. |
@@ -879,9 +879,9 @@ Generated from the dispatch switch in `go_fleet_runner/main.go`; `fleet-runner -
 
 <!-- BEGIN GENERATED:verbs repo=go_fleet_runner -->
 
-_131 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
+_141 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
 
-`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-journal`, `deploy-pool`, `deploy-recover`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `doctor`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `github-budget`, `graph-context`, `grep`, `health`, `horizon`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `key`, `loadtest`, `mcp`, `mirror-clone`, `mirror-fetch`, `new-service`, `next`, `nginx-drift-audit`, `nginx-render`, `notify`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-balance`, `pool-guardian`, `pool-metrics-targets`, `pool-plan`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `pyroscope`, `real-data-loops`, `remediate`, `render-compose`, `replay`, `rollback`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `who`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
+`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `ci`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-journal`, `deploy-pool`, `deploy-recover`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `doctor`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `github-budget`, `graph-context`, `graph-nodes`, `grep`, `health`, `horizon`, `hosts`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `job`, `key`, `loadtest`, `lock`, `mcp`, `mirror-clone`, `mirror-fetch`, `new-service`, `next`, `nginx-drift-audit`, `nginx-render`, `notify`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-balance`, `pool-guardian`, `pool-map`, `pool-metrics-targets`, `pool-plan`, `pool-proxy-plan`, `pool-shift`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `pyroscope`, `real-data-loops`, `release`, `remediate`, `render-compose`, `replay`, `rollback`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `self-update`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `who`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
 
 <!-- END GENERATED:verbs -->
 
@@ -1344,8 +1344,9 @@ fleet-runner deploy go_<repo>
 points; when deployment authority is required
 (`FLEET_DEPLOYMENT_AUTHORITY_MODE=required`), plain `deploy` is refused.
 
-On Builder LXC 108 the registry cache race needs no flag; cosign signing
-is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
+On Builder LXC 108 the registry cache race needs no flag, and cosign
+signing works with no flag (verified 2026-10-20: see the Cosign signing
+note below):
 
 - **Registry cache race** — `raw.githubusercontent.com/.../services.json`
   is still Fastly-cached with `max-age=300`, so `fleet-runner` resolves
@@ -1392,18 +1393,29 @@ is degraded as of 2026-10-13 and deploys there need `--skip-cosign`:
   CDN cannot be read stops the command. The other audit and report verbs
   still read the working tree (go_fleet_runner
   `docs/registry-checkout-readers.md`).
-- **Cosign signing** — degraded as of 2026-10-13: the vault's
-  `cosign-public-key` is populated (`fleet-runner verify-image` still
-  verifies previously signed images), but the vault signing key is
-  empty, so deploys run with `--skip-cosign` and the images they push
-  are unsigned. Once the vault entries are restored, a plain `deploy`
-  signs on push and verifies on pull with no flag. `--skip-cosign` is
-  an emergency-only bypass (vault unreachable, key mid-rotation, signing
-  key empty) — pass it only while signing is unavailable. `deploy`
-  refuses it without a reason
+- **Cosign signing** — works, verified 2026-10-20 07:19Z. The vault holds
+  `cosign-signing-key`, `cosign-signing-key-password` and `cosign-public-key`
+  as a working set (a blob signed with the vault private key and password
+  verifies with the vault public key), and a plain
+  `fleet-runner deploy go-fleet-selftest-aggregator --force-build` on the
+  builder printed `cosign signed` after the push, `cosign verified` on the
+  dockerhost before the pull, and finished green with no bypass flag; both
+  `:<sha>` and `:latest` of that image verify with `fleet-runner verify-image`.
+  An earlier note here said the vault signing key had been empty since
+  2026-10-13 and that deploys needed `--skip-cosign`; that no longer holds, so
+  do not pass `--skip-cosign` out of habit. Images pushed with the flag
+  between 2026-10-13 and 2026-10-20 are unsigned: a later `deploy --skip-build`
+  of one of them fails the dockerhost verify, so rebuild instead (plain
+  `deploy` of a drifted service rebuilds and signs; `--force-build` forces it).
+  `--skip-cosign` stays an emergency-only bypass (vault unreachable, key
+  mid-rotation): `deploy` refuses it without a reason
   (`--skip-cosign-reason "<why>"` or `FLEET_SKIP_COSIGN_REASON`); it prints
   a loud bypass warning and lands an audit-log row that records the reason,
-  precisely so it's never silently routine.
+  precisely so it's never silently routine. If a deploy exits 4 at stage
+  `sign`, read the vault error first (`fleet-runner verify-image <image>`
+  exercises the vault read) before assuming the key is gone; do not rotate a
+  key that signs and verifies, because rotation breaks `verify-image` for every
+  image signed so far.
 
 <!-- anchor id=skip-cosign-reason repo=go_fleet_runner symbol=go:deploy_cosign.go#resolveSkipCosignReason verified=630a481e6 digest=sha256:f9d3e56291db47b14ad0e2e8e79a585d5e19b9e87549db4d6c56dfcbb84e9657 on=2026-10-18 -->
 
