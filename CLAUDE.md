@@ -177,17 +177,17 @@ only need IDs, names, ports, TRL, or URLs, **fetch a slice instead**
 — it's the same `raw.githubusercontent.com` path with a different
 filename. Sized for AI agents on a token budget.
 
-| URL suffix              | shape                                                    | size    | use when                                |
-| ----------------------- | -------------------------------------------------------- | ------- | --------------------------------------- |
-| `services.ids.json`     | `[{"id": "a11y-quick"}, …]`                              | ~14 KB  | "what services exist?" (sunset omitted) |
-| `services.names.json`   | `[{id, name}]`                                           | ~29 KB  | pickers / menus                         |
-| `services.minimal.json` | `[{id, name, mesh, kind, category, language, trl, url}]` | ~97 KB  | catalog overview                        |
-| `services.urls.json`    | `[{id, url, health_url, example_path, auth_help}]`       | ~119 KB | building Open / smoke links             |
-| `services.trl.json`     | `[{id, trl, trl_ceiling, trl_assessed_at, …}]`           | ~65 KB  | TRL audits                              |
-| `services.ports.json`   | `[{id, host_port, container_port}]`                      | ~26 KB  | port allocation / conflict checks       |
-| `services.deploy.json`  | `[{id, mesh, kind, runtime, language, repo_url}]`        | ~87 KB  | fleet-runner deploy targeting           |
-| `services.depends.json` | `[{id, depends_on}]`                                     | ~13 KB  | declared dependency edges               |
-| `services.mcp.json`     | `[{id, name, url, mcp_ready, mcp_tool_count, …}]`        | ~40 KB  | MCP-ready services                      |
+| URL suffix              | shape                                                                           | size    | use when                                |
+| ----------------------- | ------------------------------------------------------------------------------- | ------- | --------------------------------------- |
+| `services.ids.json`     | `[{"id": "a11y-quick"}, …]`                                                     | ~14 KB  | "what services exist?" (sunset omitted) |
+| `services.names.json`   | `[{id, name}]`                                                                  | ~29 KB  | pickers / menus                         |
+| `services.minimal.json` | `[{id, name, mesh, kind, category, language, trl, url}]`                        | ~97 KB  | catalog overview                        |
+| `services.urls.json`    | `[{id, url, health_url, example_path, example_path_source, params, auth_help}]` | ~245 KB | building Open / smoke links, forms      |
+| `services.trl.json`     | `[{id, trl, trl_ceiling, trl_assessed_at, …}]`                                  | ~65 KB  | TRL audits                              |
+| `services.ports.json`   | `[{id, host_port, container_port}]`                                             | ~26 KB  | port allocation / conflict checks       |
+| `services.deploy.json`  | `[{id, mesh, kind, runtime, language, repo_url}]`                               | ~87 KB  | fleet-runner deploy targeting           |
+| `services.depends.json` | `[{id, depends_on}]`                                                            | ~13 KB  | declared dependency edges               |
+| `services.mcp.json`     | `[{id, name, url, mcp_ready, mcp_tool_count, …}]`                               | ~40 KB  | MCP-ready services                      |
 
 Base URL: `https://raw.githubusercontent.com/baditaflorin/services-registry/main/<file>`.
 
@@ -678,6 +678,18 @@ internal IP in this public repository. An explicit `render-compose
 > `render-compose` / `deploy` unless the per-slug `cpus` override is set
 > in `overrides.json`. Declare the cap there to make it durable.
 
+**Declared inputs and the example address** (`params`, `example_path`, `example_path_source`). `params` is the
+service's own `api.params` from its `service.yaml` (`name`, `required`, `type`, short `description`, `example`
+when known) and `example_path` is what the hub's Open / Run example links use, so it must carry every required
+param (a link without one answers a 400; `bin/test_generate.py` fails when it does not). Do not hand-write them:
+`bin/extract-service-facts.py` (on the builder, read-only over the clones) writes a facts file and
+`bin/sync-service-params.py --facts <file>` shows what it would change (`--apply` edits `overrides.json` in place;
+then `python3 bin/generate.py --only <ids>`). It never replaces an example that already carries every required
+param, takes the service's sanitised `test.url` next (no `/t/<token>` prefix, no `api_key`, never a key stored),
+else builds one from the params with a fixed safe value and marks it `"example_path_source": "derived-from-params"`.
+A service the script cannot give a link (POST-only, a required param with no safe value) is listed in the
+allow-list of `TestParamsAndExamples` with the reason.
+
 **Bulk rules** (reserved `$rules` key, since 2026-05-14):
 
 ```json
@@ -879,9 +891,9 @@ Generated from the dispatch switch in `go_fleet_runner/main.go`; `fleet-runner -
 
 <!-- BEGIN GENERATED:verbs repo=go_fleet_runner -->
 
-_141 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
+_142 verbs, generated from the dispatch switch in `go_fleet_runner/main.go`; do not edit by hand._
 
-`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `ci`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-journal`, `deploy-pool`, `deploy-recover`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `doctor`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `github-budget`, `graph-context`, `graph-nodes`, `grep`, `health`, `horizon`, `hosts`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `job`, `key`, `loadtest`, `lock`, `mcp`, `mirror-clone`, `mirror-fetch`, `new-service`, `next`, `nginx-drift-audit`, `nginx-render`, `notify`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-balance`, `pool-guardian`, `pool-map`, `pool-metrics-targets`, `pool-plan`, `pool-proxy-plan`, `pool-shift`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `pyroscope`, `real-data-loops`, `release`, `remediate`, `render-compose`, `replay`, `rollback`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `self-update`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `who`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
+`ai-context`, `allocate-port`, `astedit`, `astgrep`, `audit`, `audit-callers`, `audit-graph`, `audit-log`, `batch`, `branch`, `broker-canary`, `build-test`, `builder-pool`, `bump-version`, `canary-inventory`, `capacity`, `capacity-report`, `cert`, `change-receipts`, `changelog`, `ci`, `classify`, `clone-missing`, `compose-heal`, `compose-image-heal`, `compose-port-prep`, `compose-ports-strip`, `compose-roll`, `compute-attribution`, `converge`, `coolify`, `ctx`, `cve-history`, `cve-root-cause`, `dep-cve`, `dep-cve-merge`, `depgraph`, `deploy`, `deploy-all`, `deploy-authorized`, `deploy-debt`, `deploy-journal`, `deploy-pool`, `deploy-recover`, `deps`, `diagram`, `digest`, `disk-report`, `dns-heal`, `doctor`, `drift`, `e2e`, `exec`, `explain`, `export-collection`, `fleetfetch-migrate`, `forecast`, `gateway-health`, `git-traffic`, `github-budget`, `graph-context`, `graph-nodes`, `grep`, `health`, `horizon`, `hosts`, `hosts-sync`, `image-gc`, `inject`, `install-fleet-access-log-conf`, `install-verify-cache-conf`, `intent`, `investigate-url`, `job`, `key`, `loadtest`, `lock`, `mcp`, `mirror-clone`, `mirror-fetch`, `new-service`, `next`, `nginx-drift-audit`, `nginx-render`, `notify`, `overrides`, `pages-audit`, `placement-check`, `placement-plan`, `playbook`, `pool-balance`, `pool-guardian`, `pool-map`, `pool-metrics-targets`, `pool-plan`, `pool-proxy-plan`, `pool-shift`, `pool-status`, `port-heal`, `prs`, `publish-image`, `push`, `pyroscope`, `real-data-loops`, `release`, `remediate`, `render-compose`, `replay`, `rollback`, `rollout`, `scaffold-compose`, `scaffold-service-yaml`, `scanopy`, `scanopy-audit`, `scanopy-mcp`, `sed`, `select`, `self-update`, `session-summary`, `shape`, `smoke`, `spiffe-audit`, `spiffe-entries`, `split`, `stage`, `stage-batch`, `stash`, `state`, `stats`, `sweep-rollback`, `sync-deps`, `template`, `tokens`, `trl-review`, `update-dep`, `verify-image`, `who`, `whois`, `why`, `woodpecker`, `worktree-audit`, `worktree-prune`
 
 <!-- END GENERATED:verbs -->
 
