@@ -1023,6 +1023,20 @@ normalizes failures into a consistent, non-silent error shape (`_oo_error`
 `streams` / `stream-info` handle failures themselves) — copy
 both patterns if you add a new command that talks to OpenObserve.
 
+**No OpenObserve password? Use the read-only log relay.** OpenObserve OSS has no
+read-only role, so the root password stays on VM 630. `bin/oo-relay` (a small Go
+service on VM 630) holds it instead and gives any agent one narrow read: the log
+lines of one container (exact `container_name`, optional `host` and substring)
+from `docker_logs`, at most 7 days and 500 lines per call, only the fields
+`_timestamp`, `container_name`, `host`, `message`, behind its own bearer token.
+No SQL, stream, organization or write access. Set `OO_RELAY_URL` and `bin/oo`
+sends `logs`, `grep --container`, `since-redeploy` and `context` through the relay
+(commands that need SQL or the whole fleet say so and exit 2). With
+`OO_RELAY_VIA=bastion` the token is read on Builder CT 108 and never reaches your
+machine. Setup, token handling and the deploy runbook:
+`docs/operations/openobserve-log-relay.md`. Never paste or print the token; a
+relay error is never evidence of zero matching lines.
+
 **Check `bin/oo streams` and host coverage before relying on a stream.**
 The active 0own instance returned `Search stream not found: default` on
 2026-10-07, so do not assume host/journald logs are available. `docker_logs`
